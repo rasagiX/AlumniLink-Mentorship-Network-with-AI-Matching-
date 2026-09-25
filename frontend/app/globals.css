@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Dark institutional theme: near-black ground, soft off-white text, a
+     single electric-blue accent carrying all primary actions, links, focus
+     states, and match-score emphasis. Each portal gets a quiet variant of
+     that same blue family so the identity stays cohesive rather than
+     competing with the accent. */
+  --ink: 210 24% 94%;
+  --paper: 222 26% 6%;
+  --surface: 222 22% 9%;
+  --line: 220 16% 18%;
+  --muted: 218 12% 62%;
+  --accent: 213 94% 62%;
+  --accent-ink: 213 100% 85%;
+  --success: 152 45% 48%;
+  --warning: 40 90% 58%;
+  --danger: 4 78% 60%;
+  --role-student: 213 94% 62%;
+  --role-mentor: 175 55% 48%;
+  --role-admin: 250 55% 68%;
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* {
+  border-color: hsl(var(--line));
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: hsl(var(--paper));
+  color: hsl(var(--ink));
+  font-feature-settings: "cv11", "ss01";
+}
+
+::selection {
+  background: hsl(var(--accent) / 0.25);
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.rule {
+  border-top: 1px solid hsl(var(--line));
+}
+
+.number-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbar kept quiet to match the registrar tone */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--line)); border-radius: 6px; }
