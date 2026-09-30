@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { Compass } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { RoleSwitcher } from "@/components/role-switcher";
 import { SignOutButton } from "@/components/sign-out-button";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/types";
@@ -89,7 +88,6 @@ export function PortalShell({
           <div className="mx-auto max-w-content px-5 py-6 md:px-8 md:py-8">{children}</div>
         </main>
       </div>
-      <RoleSwitcher currentRole={role} />
     </div>
   );
 }

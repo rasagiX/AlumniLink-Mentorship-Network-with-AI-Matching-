@@ -7,7 +7,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth-token";
 const navItems: NavItem[] = [
   { href: "/student/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { href: "/student/directory", label: "Mentor Directory", icon: <Users className="h-4 w-4" /> },
-  { href: "/student/lms/cyc-001", label: "My Cohort (LMS)", icon: <BookOpenCheck className="h-4 w-4" /> },
+  { href: "/student/lms", label: "My Cohort (LMS)", icon: <BookOpenCheck className="h-4 w-4" /> },
 ];
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {

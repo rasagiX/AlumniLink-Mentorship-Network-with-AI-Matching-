@@ -23,6 +23,12 @@ DEMO_PASSWORD = "demo1234"
 DEMO_USERS = [
     {"id": "stu-014", "name": "Priya Raman", "email": "priya.raman@demo.alumnilink.edu", "role": "student"},
     {"id": "men-003", "name": "Devika Sharma", "email": "devika.sharma@demo.alumnilink.edu", "role": "mentor"},
+    {"id": "men-004", "name": "Arjun Mehta", "email": "arjun.mehta@demo.alumnilink.edu", "role": "mentor"},
+    {"id": "men-005", "name": "Sofia Alvarez", "email": "sofia.alvarez@demo.alumnilink.edu", "role": "mentor"},
+    {"id": "men-006", "name": "Nadia Okafor", "email": "nadia.okafor@demo.alumnilink.edu", "role": "mentor"},
+    {"id": "men-007", "name": "Rahul Iyer", "email": "rahul.iyer@demo.alumnilink.edu", "role": "mentor"},
+    {"id": "men-008", "name": "Elena Petrova", "email": "elena.petrova@demo.alumnilink.edu", "role": "mentor"},
+    {"id": "men-009", "name": "Marcus Green", "email": "marcus.green@demo.alumnilink.edu", "role": "mentor"},
     {"id": "adm-001", "name": "Registrar Office", "email": "registrar@demo.alumnilink.edu", "role": "admin"},
 ]
 
@@ -47,6 +53,21 @@ PENDING_ROSTER_MENTOR = {
     "domain": "Software Engineering",
     "capacity": 2,
 }
+
+# ---------------------------------------------------------------------------
+# Add your real mentors here.
+# Each mentor in this list will be added to the approved roster.
+# They can then register at /login using this email + a password they choose.
+# Set capacity to 1 or 2 (max number of students they can mentor at once).
+# ---------------------------------------------------------------------------
+REAL_MENTORS = [
+    {"user_id": "men-004", "name": "Arjun Mehta", "email": "arjun.mehta@demo.alumnilink.edu", "title": "Senior Software Engineer", "company": "Google", "domain": "Software Engineering", "capacity": 2},
+    {"user_id": "men-005", "name": "Sofia Alvarez", "email": "sofia.alvarez@demo.alumnilink.edu", "title": "Product Manager", "company": "Meta", "domain": "Product Management", "capacity": 2},
+    {"user_id": "men-006", "name": "Nadia Okafor", "email": "nadia.okafor@demo.alumnilink.edu", "title": "Data Science Lead", "company": "Vantage Analytics", "domain": "Data Science", "capacity": 2},
+    {"user_id": "men-007", "name": "Rahul Iyer", "email": "rahul.iyer@demo.alumnilink.edu", "title": "UX Design Manager", "company": "Harbor Studio", "domain": "UX Design", "capacity": 2},
+    {"user_id": "men-008", "name": "Elena Petrova", "email": "elena.petrova@demo.alumnilink.edu", "title": "Cybersecurity Architect", "company": "Sentinel Systems", "domain": "Cybersecurity", "capacity": 2},
+    {"user_id": "men-009", "name": "Marcus Green", "email": "marcus.green@demo.alumnilink.edu", "title": "Financial Analyst", "company": "Kestrel Capital", "domain": "Finance", "capacity": 2},
+]
 
 
 def seed() -> None:
@@ -87,6 +108,12 @@ def seed() -> None:
 
         upsert_roster(REGISTERED_ROSTER_MENTOR, registered_to=mentor_user)
         upsert_roster(PENDING_ROSTER_MENTOR)
+
+        # Seed additional demo mentors as registered profiles so students can
+        # discover them immediately in the directory.
+        for mentor_data in REAL_MENTORS:
+            upsert_roster(mentor_data, registered_to=users_by_id[mentor_data["user_id"]])
+            print(f"  - registered      {mentor_data['email']}")
 
         db.commit()
         print(f'Seeded {len(DEMO_USERS)} demo accounts (password for all: "{DEMO_PASSWORD}"):')

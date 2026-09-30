@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Compass, GraduationCap, Users, ShieldCheck, AlertCircle } from "lucide-react";
+import { Compass, AlertCircle, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,9 @@ const ROLE_HOME: Record<Role, string> = {
   admin: "/admin/dashboard",
 };
 
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
@@ -31,14 +34,47 @@ const registerSchema = z.object({
   name: z.string().min(2, "Enter your full name"),
   email: z.string().min(1, "Email is required").email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  role: z.enum(["student", "mentor", "admin"], { errorMap: () => ({ message: "Choose a role" }) }),
+  role: z.enum(["student", "mentor"], {
+    errorMap: () => ({ message: "Choose a role" }),
+  }),
 });
 type RegisterValues = z.infer<typeof registerSchema>;
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function ErrorBanner({ message }: { message: string }) {
+  // Detect the "contact admin" class of messages and render them with a
+  // slightly different tone so users understand what to do next.
+  const isAdminContact =
+    message.toLowerCase().includes("contact") &&
+    message.toLowerCase().includes("admin");
+
+  return (
+    <div
+      className={cn(
+        "mb-4 flex items-start gap-2 rounded-sm border px-3 py-2 text-sm",
+        isAdminContact
+          ? "border-warning/30 bg-warning/[0.08] text-warning"
+          : "border-danger/30 bg-danger/[0.08] text-danger"
+      )}
+    >
+      {isAdminContact ? (
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      ) : (
+        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      )}
+      <span>{message}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 export default function LoginPage() {
   const [mode, setMode] = React.useState<"signin" | "register">("signin");
   const [serverError, setServerError] = React.useState<string | null>(null);
-  const [demoLoading, setDemoLoading] = React.useState<Role | null>(null);
   const router = useRouter();
 
   const loginForm = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
@@ -79,26 +115,6 @@ export default function LoginPage() {
     afterAuth(data.user.role);
   };
 
-  const onDemo = async (role: Role) => {
-    setServerError(null);
-    setDemoLoading(role);
-    try {
-      const res = await fetch("/api/auth/demo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setServerError(data.error ?? "Demo login failed.");
-        return;
-      }
-      afterAuth(role);
-    } finally {
-      setDemoLoading(null);
-    }
-  };
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-5 py-12">
       <div className="w-full max-w-md">
@@ -109,13 +125,11 @@ export default function LoginPage() {
 
         <Card>
           <CardContent className="p-6">
+            {/* Tab switcher */}
             <div className="mb-6 grid grid-cols-2 rounded-sm border border-line p-1 text-sm">
               <button
                 type="button"
-                onClick={() => {
-                  setMode("signin");
-                  setServerError(null);
-                }}
+                onClick={() => { setMode("signin"); setServerError(null); }}
                 className={cn(
                   "rounded-sm py-2 font-medium transition-colors",
                   mode === "signin" ? "bg-ink text-paper" : "text-muted hover:text-ink"
@@ -125,10 +139,7 @@ export default function LoginPage() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setMode("register");
-                  setServerError(null);
-                }}
+                onClick={() => { setMode("register"); setServerError(null); }}
                 className={cn(
                   "rounded-sm py-2 font-medium transition-colors",
                   mode === "register" ? "bg-ink text-paper" : "text-muted hover:text-ink"
@@ -138,12 +149,10 @@ export default function LoginPage() {
               </button>
             </div>
 
-            {serverError && (
-              <div className="mb-4 flex items-start gap-2 rounded-sm border border-danger/30 bg-danger/[0.08] px-3 py-2 text-sm text-danger">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {serverError}
-              </div>
-            )}
+            {/* Error / info banner */}
+            {serverError && <ErrorBanner message={serverError} />}
 
+            {/* Sign-in form */}
             {mode === "signin" ? (
               <form onSubmit={loginForm.handleSubmit(onSignIn)} noValidate className="space-y-4">
                 <div>
@@ -152,6 +161,7 @@ export default function LoginPage() {
                     id="email"
                     type="email"
                     placeholder="you@alumnilink.edu"
+                    autoComplete="email"
                     {...loginForm.register("email")}
                     aria-invalid={!!loginForm.formState.errors.email}
                   />
@@ -165,6 +175,7 @@ export default function LoginPage() {
                     id="password"
                     type="password"
                     placeholder="••••••••"
+                    autoComplete="current-password"
                     {...loginForm.register("password")}
                     aria-invalid={!!loginForm.formState.errors.password}
                   />
@@ -177,17 +188,29 @@ export default function LoginPage() {
                 </Button>
               </form>
             ) : (
+              /* Register form */
               <form onSubmit={registerForm.handleSubmit(onRegister)} noValidate className="space-y-4">
                 <div>
                   <Label htmlFor="name">Full name</Label>
-                  <Input id="name" placeholder="Jordan Alvarez" {...registerForm.register("name")} />
+                  <Input
+                    id="name"
+                    placeholder="Jordan Alvarez"
+                    autoComplete="name"
+                    {...registerForm.register("name")}
+                  />
                   {registerForm.formState.errors.name && (
                     <p className="mt-1 text-xs text-danger">{registerForm.formState.errors.name.message}</p>
                   )}
                 </div>
                 <div>
                   <Label htmlFor="reg-email">Institutional email</Label>
-                  <Input id="reg-email" type="email" placeholder="you@alumnilink.edu" {...registerForm.register("email")} />
+                  <Input
+                    id="reg-email"
+                    type="email"
+                    placeholder="you@alumnilink.edu"
+                    autoComplete="email"
+                    {...registerForm.register("email")}
+                  />
                   {registerForm.formState.errors.email && (
                     <p className="mt-1 text-xs text-danger">{registerForm.formState.errors.email.message}</p>
                   )}
@@ -198,6 +221,7 @@ export default function LoginPage() {
                     id="reg-password"
                     type="password"
                     placeholder="At least 8 characters"
+                    autoComplete="new-password"
                     {...registerForm.register("password")}
                   />
                   {registerForm.formState.errors.password && (
@@ -206,46 +230,45 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <Label htmlFor="role">I am registering as a…</Label>
-                  <Select onValueChange={(v) => registerForm.setValue("role", v as Role, { shouldValidate: true })}>
+                  <Select
+                    onValueChange={(v) =>
+                      registerForm.setValue("role", v as "student" | "mentor", { shouldValidate: true })
+                    }
+                  >
                     <SelectTrigger id="role">
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="student">Student</SelectItem>
                       <SelectItem value="mentor">Alumni Mentor</SelectItem>
-                      <SelectItem value="admin">Institutional Admin</SelectItem>
                     </SelectContent>
                   </Select>
                   {registerForm.formState.errors.role && (
                     <p className="mt-1 text-xs text-danger">{registerForm.formState.errors.role.message}</p>
                   )}
                 </div>
+
+                {/* Mentor registration hint */}
+                <div className="flex items-start gap-2 rounded-sm border border-line bg-surface px-3 py-2.5 text-xs text-muted">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+                  <span>
+                    Alumni mentors must be approved by an admin before registering. If your email
+                    is not yet on the approved roster, contact your institution&apos;s admin to be added.
+                  </span>
+                </div>
+
                 <Button type="submit" className="w-full" disabled={registerForm.formState.isSubmitting}>
                   {registerForm.formState.isSubmitting ? "Creating account…" : "Create Account"}
                 </Button>
               </form>
             )}
-
-            <div className="my-5 flex items-center gap-3 text-xs text-muted">
-              <span className="h-px flex-1 bg-line" /> or explore instantly <span className="h-px flex-1 bg-line" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <Button type="button" variant="outline" size="sm" disabled={!!demoLoading} onClick={() => onDemo("student")}>
-                <GraduationCap className="h-3.5 w-3.5" /> {demoLoading === "student" ? "…" : "Student"}
-              </Button>
-              <Button type="button" variant="outline" size="sm" disabled={!!demoLoading} onClick={() => onDemo("mentor")}>
-                <Users className="h-3.5 w-3.5" /> {demoLoading === "mentor" ? "…" : "Mentor"}
-              </Button>
-              <Button type="button" variant="outline" size="sm" disabled={!!demoLoading} onClick={() => onDemo("admin")}>
-                <ShieldCheck className="h-3.5 w-3.5" /> {demoLoading === "admin" ? "…" : "Admin"}
-              </Button>
-            </div>
           </CardContent>
         </Card>
+
         <p className="mt-6 text-center text-xs text-muted">
-          Demo buttons sign in to seeded accounts through the real auth backend — run{" "}
-          <code className="rounded-sm bg-surface px-1 py-0.5">npm run db:seed</code> once after install.
+          Only registered alumni on the approved roster can sign in as mentors.
+          <br />
+          Contact your institution&apos;s admin if you believe you should have access.
         </p>
       </div>
     </div>
