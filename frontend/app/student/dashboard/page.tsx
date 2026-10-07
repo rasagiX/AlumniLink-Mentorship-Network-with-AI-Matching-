@@ -85,7 +85,7 @@ export default function StudentDashboard() {
                 <CheckCircle2 className="h-3 w-3" /> Mentorship active
               </Badge>
               <h2 className="font-display text-xl font-medium">
-                You are matched with {acceptedRequest.mentor_name}
+                Your mentor is {acceptedRequest.mentor_name}
               </h2>
               <p className="mt-1 text-sm text-muted">
                 Goal: {acceptedRequest.goal.slice(0, 120)}{acceptedRequest.goal.length > 120 ? "…" : ""}

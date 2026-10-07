@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_role
 from app.db.session import get_db
 from app.models.mentor import Mentor
-from app.models.mentorship_cycle import MentorshipCycle
+from app.models.mentorship_cycle import MentorshipCycle, SupportTicket
 from app.models.mentorship_request import MentorshipRequest
 from app.models.user import User
 
@@ -60,3 +60,44 @@ def list_pairs(
         }
         for c in cycles
     ]
+
+
+@router.get("/support-tickets")
+def list_support_tickets(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_role("admin")),
+):
+    """Admin view of all support tickets from students and mentors."""
+    tickets = (
+        db.query(SupportTicket)
+        .order_by(SupportTicket.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": t.id,
+            "user_name": t.user_name,
+            "user_role": t.user_role,
+            "subject": t.subject,
+            "message": t.message,
+            "status": t.status,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in tickets
+    ]
+
+
+@router.patch("/support-tickets/{ticket_id}/resolve")
+def resolve_support_ticket(
+    ticket_id: str,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_role("admin")),
+):
+    """Mark a support ticket as resolved."""
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
+    if not ticket:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+    ticket.status = "resolved"
+    db.commit()
+    return {"id": ticket.id, "status": ticket.status}

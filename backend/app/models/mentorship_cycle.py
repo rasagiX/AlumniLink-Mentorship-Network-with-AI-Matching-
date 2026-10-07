@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
@@ -11,10 +11,7 @@ def _uuid() -> str:
 
 
 class MentorshipCycle(Base):
-    """
-    Created automatically when a mentor accepts a mentorship request.
-    Tracks the live engagement between one student and one mentor.
-    """
+    """Created automatically when a mentor accepts a request."""
 
     __tablename__ = "mentorship_cycles"
 
@@ -27,17 +24,16 @@ class MentorshipCycle(Base):
     domain = Column(String, nullable=True)
     total_weeks = Column(Integer, nullable=False, default=12)
     current_week = Column(Integer, nullable=False, default=1)
-    # Mentor can write a free-form programme roadmap visible to the student
     roadmap = Column(Text, nullable=True)
+    # Schedule fields filled in by mentor at acceptance time
+    available_days = Column(String, nullable=True)      # e.g. "Mon,Wed,Fri"
+    class_start_date = Column(Date, nullable=True)      # when classes begin
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     is_active = Column(Boolean, nullable=False, default=True)
 
 
 class LMSModule(Base):
-    """
-    One week / milestone inside a MentorshipCycle.
-    Mentors create/edit these; students read them.
-    """
+    """One week / milestone inside a MentorshipCycle."""
 
     __tablename__ = "lms_modules"
 
@@ -45,25 +41,19 @@ class LMSModule(Base):
     cycle_id = Column(String, ForeignKey("mentorship_cycles.id"), nullable=False, index=True)
     week_number = Column(Integer, nullable=False)
     title = Column(String, nullable=False, default="")
-    objectives = Column(Text, nullable=False, default="")       # newline-separated
-    # Learning resources — comma-separated "label|url" pairs stored as text
-    learning_resources = Column(Text, nullable=True)
+    objectives = Column(Text, nullable=False, default="")
+    learning_resources = Column(Text, nullable=True)   # JSON list [{label, url}]
     assignment_prompt = Column(Text, nullable=True)
-    # Live class — mentor pastes a meeting link here; student sees a "Join" button
     live_class_url = Column(String, nullable=True)
-    # Recording — mentor pastes a recording URL after the session
     recording_url = Column(String, nullable=True)
-    recording_title = Column(String, nullable=True)             # optional label
+    recording_title = Column(String, nullable=True)
     is_published = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class Assignment(Base):
-    """
-    Student submission for a module, plus mentor grading.
-    One row per (module_id, student_id) — only created when a student submits.
-    """
+    """Student submission for a module, plus mentor grading."""
 
     __tablename__ = "assignments"
 
@@ -71,7 +61,22 @@ class Assignment(Base):
     module_id = Column(String, ForeignKey("lms_modules.id"), nullable=False, index=True)
     student_id = Column(String, nullable=False, index=True)
     submitted_file_name = Column(String, nullable=False)
-    grade = Column(Integer, nullable=True)       # 0–100
+    grade = Column(Integer, nullable=True)
     feedback = Column(Text, nullable=True)
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())
     graded_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SupportTicket(Base):
+    """Support request from student or mentor, routed to admin."""
+
+    __tablename__ = "support_tickets"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    user_name = Column(String, nullable=False)
+    user_role = Column(String, nullable=False)          # "student" | "mentor"
+    subject = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="open")   # "open" | "resolved"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

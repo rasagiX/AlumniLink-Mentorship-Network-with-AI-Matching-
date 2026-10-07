@@ -4,20 +4,15 @@ import { BACKEND_TOKEN_COOKIE_NAME } from "@/lib/auth-token";
 import { extractFastAPIError } from "@/lib/fastapi-error";
 import { FASTAPI_V1 } from "@/lib/server/fastapi-client";
 
-export async function PATCH(req: Request, { params }: { params: { requestId: string } }) {
+/** PATCH /api/admin/support/[ticketId]/resolve — admin: mark ticket resolved */
+export async function PATCH(_req: Request, { params }: { params: { ticketId: string } }) {
   const token = cookies().get(BACKEND_TOKEN_COOKIE_NAME)?.value;
   if (!token) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
 
-  const body = await req.text(); // forward the schedule payload
   try {
     const upstream = await fetch(
-      `${FASTAPI_V1}/mentorship-requests/${params.requestId}/accept`,
-      {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body,
-        cache: "no-store",
-      }
+      `${FASTAPI_V1}/admin/support-tickets/${params.ticketId}/resolve`,
+      { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
     );
     const data = await upstream.json().catch(() => null);
     if (!upstream.ok) return NextResponse.json({ error: extractFastAPIError(data) }, { status: upstream.status });
