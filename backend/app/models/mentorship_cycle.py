@@ -28,6 +28,7 @@ class MentorshipCycle(Base):
     # Schedule fields filled in by mentor at acceptance time
     available_days = Column(String, nullable=True)      # e.g. "Mon,Wed,Fri"
     class_start_date = Column(Date, nullable=True)      # when classes begin
+    class_time = Column(String, nullable=True)          # e.g. "10:00 AM"
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     is_active = Column(Boolean, nullable=False, default=True)
 
@@ -79,4 +80,25 @@ class SupportTicket(Base):
     subject = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     status = Column(String, nullable=False, default="open")   # "open" | "resolved"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionBooking(Base):
+    """
+    A request from a student/senior to book an online or offline session
+    with their mentor.
+    """
+
+    __tablename__ = "session_bookings"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    cycle_id = Column(String, ForeignKey("mentorship_cycles.id"), nullable=False, index=True)
+    student_id = Column(String, nullable=False, index=True)
+    mentor_id = Column(String, nullable=False, index=True)
+    student_name = Column(String, nullable=False)
+    session_type = Column(String, nullable=False)       # "online" | "offline"
+    proposed_date = Column(String, nullable=True)       # ISO date string
+    proposed_time = Column(String, nullable=True)       # e.g. "3:00 PM"
+    note = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="pending")   # "pending" | "confirmed" | "rejected"
     created_at = Column(DateTime(timezone=True), server_default=func.now())

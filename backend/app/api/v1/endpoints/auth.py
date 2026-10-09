@@ -51,6 +51,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     # Mentors are admin-approved, not self-service: registering as a mentor
     # requires a matching row already on the roster (see app/models/mentor.py
     # and the /mentors admin endpoints).
+    # Seniors can self-register — they are students in a higher year who peer-mentor juniors.
     roster_entry = None
     if payload.role == "mentor":
         roster_entry = db.query(Mentor).filter(Mentor.email == email).first()

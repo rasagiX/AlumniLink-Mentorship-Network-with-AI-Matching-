@@ -4,19 +4,23 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth-token";
 
 const ROLE_PREFIX: Record<string, string> = {
   "/student": "student",
-  "/alumni": "mentor",
-  "/admin": "admin",
+  "/senior":  "senior",
+  "/alumni":  "mentor",
+  "/admin":   "admin",
 };
 
 const ROLE_HOME: Record<string, string> = {
   student: "/student/dashboard",
-  mentor: "/alumni/dashboard",
-  admin: "/admin/dashboard",
+  senior:  "/senior/dashboard",
+  mentor:  "/alumni/dashboard",
+  admin:   "/admin/dashboard",
 };
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const prefix = Object.keys(ROLE_PREFIX).find((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const prefix = Object.keys(ROLE_PREFIX).find(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
   if (!prefix) return NextResponse.next();
 
   const requiredRole = ROLE_PREFIX[prefix];
@@ -30,12 +34,12 @@ export async function middleware(req: NextRequest) {
   }
 
   if (session.role !== requiredRole) {
-    return NextResponse.redirect(new URL(ROLE_HOME[session.role], req.url));
+    return NextResponse.redirect(new URL(ROLE_HOME[session.role] ?? "/login", req.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/student/:path*", "/alumni/:path*", "/admin/:path*"],
+  matcher: ["/student/:path*", "/senior/:path*", "/alumni/:path*", "/admin/:path*"],
 };

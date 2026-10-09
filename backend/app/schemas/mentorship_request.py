@@ -44,6 +44,7 @@ class AcceptSchedulePayload(BaseModel):
     available_days: List[str] = Field(min_length=1, description="Days mentor is available, e.g. ['Mon','Wed','Fri']")
     total_weeks: int = Field(ge=1, le=52, default=12)
     class_start_date: str = Field(description="ISO date string YYYY-MM-DD")
+    class_time: str = Field(description="Time of class e.g. '10:00 AM'", min_length=1)
 
 
 # ---------------------------------------------------------------------------
@@ -62,5 +63,31 @@ class SupportTicketOut(BaseModel):
     user_role: str
     subject: str
     message: str
+    status: str
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Session bookings
+# ---------------------------------------------------------------------------
+
+class SessionBookingCreate(BaseModel):
+    cycle_id: str
+    session_type: Literal["online", "offline"]
+    proposed_date: Optional[str] = None    # ISO date string YYYY-MM-DD
+    proposed_time: Optional[str] = None    # e.g. "3:00 PM"
+    note: Optional[str] = None
+
+
+class SessionBookingOut(BaseModel):
+    id: str
+    cycle_id: str
+    student_id: str
+    mentor_id: str
+    student_name: str
+    session_type: str
+    proposed_date: Optional[str]
+    proposed_time: Optional[str]
+    note: Optional[str]
     status: str
     created_at: datetime

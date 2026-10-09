@@ -41,6 +41,7 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const acceptSchema = z.object({
   total_weeks: z.coerce.number().min(1, "Min 1 week").max(52, "Max 52 weeks"),
   class_start_date: z.string().min(1, "Pick a start date"),
+  class_time: z.string().min(1, "Pick a class time"),
   available_days: z.array(z.string()).min(1, "Select at least one day"),
 });
 type AcceptValues = z.infer<typeof acceptSchema>;
@@ -70,6 +71,7 @@ function AcceptModal({
     defaultValues: {
       total_weeks: request.desired_weeks ?? 12,
       class_start_date: "",
+      class_time: "",
       available_days: [],
     },
   });
@@ -113,7 +115,7 @@ function AcceptModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg rounded-md border border-line bg-surface shadow-2xl">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-md border border-line bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div className="flex items-center gap-3">
@@ -195,6 +197,24 @@ function AcceptModal({
             {errors.class_start_date && (
               <p className="mt-1 text-xs text-danger">{errors.class_start_date.message}</p>
             )}
+          </div>
+
+          {/* Class time */}
+          <div>
+            <Label htmlFor="class_time" className="flex items-center gap-1.5">
+              <Timer className="h-3.5 w-3.5 text-muted" /> Class time
+            </Label>
+            <Input
+              id="class_time"
+              type="time"
+              {...register("class_time")}
+            />
+            {errors.class_time && (
+              <p className="mt-1 text-xs text-danger">{errors.class_time.message}</p>
+            )}
+            <p className="mt-1 text-xs text-muted">
+              The recurring time slot each class will take place.
+            </p>
           </div>
 
           {/* Available days */}

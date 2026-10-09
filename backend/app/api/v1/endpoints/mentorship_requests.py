@@ -149,6 +149,7 @@ def accept_request(
         current_week=1,
         available_days=",".join(payload.available_days),
         class_start_date=start_date,
+        class_time=payload.class_time,
     )
     db.add(cycle)
     db.flush()

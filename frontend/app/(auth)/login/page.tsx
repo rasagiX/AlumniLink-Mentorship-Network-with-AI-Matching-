@@ -17,8 +17,9 @@ import type { Role } from "@/lib/types";
 
 const ROLE_HOME: Record<Role, string> = {
   student: "/student/dashboard",
-  mentor: "/alumni/dashboard",
-  admin: "/admin/dashboard",
+  senior:  "/senior/dashboard",
+  mentor:  "/alumni/dashboard",
+  admin:   "/admin/dashboard",
 };
 
 const loginSchema = z.object({
@@ -31,7 +32,7 @@ const registerSchema = z.object({
   name: z.string().min(2, "Enter your full name"),
   email: z.string().min(1, "Email is required").email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  role: z.enum(["student", "mentor"], { errorMap: () => ({ message: "Choose a role" }) }),
+  role: z.enum(["student", "senior", "mentor"], { errorMap: () => ({ message: "Choose a role" }) }),
 });
 type RegisterValues = z.infer<typeof registerSchema>;
 
@@ -112,7 +113,7 @@ export default function LoginPage() {
     });
     const data = await res.json();
     if (!res.ok) { setServerError(data.error ?? "Something went wrong."); return; }
-    afterAuth(data.user.role);
+    afterAuth(data.user.role as Role);
   };
 
   /**
@@ -244,10 +245,11 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <Label htmlFor="role">I am registering as a…</Label>
-                  <Select onValueChange={(v) => registerForm.setValue("role", v as "student" | "mentor", { shouldValidate: true })}>
+                  <Select onValueChange={(v) => registerForm.setValue("role", v as "student" | "senior" | "mentor", { shouldValidate: true })}>
                     <SelectTrigger id="role"><SelectValue placeholder="Select a role" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="student">Student</SelectItem>
+                      <SelectItem value="student">Student (Junior)</SelectItem>
+                      <SelectItem value="senior">Senior Student</SelectItem>
                       <SelectItem value="mentor">Alumni Mentor</SelectItem>
                     </SelectContent>
                   </Select>
@@ -257,7 +259,10 @@ export default function LoginPage() {
                 </div>
                 <div className="flex items-start gap-2 rounded-sm border border-line bg-surface px-3 py-2.5 text-xs text-muted">
                   <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-                  Alumni mentors must be approved by an admin before registering.
+                  <span>
+                    <strong>Seniors</strong> can mentor juniors and be mentored by alumni.{" "}
+                    <strong>Alumni mentors</strong> must be approved by an admin first.
+                  </span>
                 </div>
                 <Button type="submit" className="w-full" disabled={registerForm.formState.isSubmitting}>
                   {registerForm.formState.isSubmitting ? "Creating account…" : "Create Account"}
