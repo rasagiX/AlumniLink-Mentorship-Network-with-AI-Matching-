@@ -9,7 +9,8 @@ import {
   CheckCircle2, Circle, Lock, ClipboardCheck, Loader2,
   AlertCircle, Plus, Trash2, ChevronRight, FileCheck2,
   Video, BookOpen, Map, Mic, Link2, Save,
-  PlayCircle, X, UploadCloud, FileText, ExternalLink,
+  PlayCircle, X, UploadCloud, FileText, FolderOpen,
+  RotateCcw, Flag,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 // Types
 // ---------------------------------------------------------------------------
 interface LearningResource { label: string; url: string }
+interface ModuleFile { id: string; original_name: string; storage_key: string; size_bytes: number | null; is_downloadable: boolean }
 interface AssignmentOut {
   id: string; submitted_file_name: string;
   grade: number | null; feedback: string | null;
@@ -36,9 +38,10 @@ interface LMSModule {
   assignment_prompt: string | null;
   live_class_url: string | null;
   recording_url: string | null; recording_title: string | null;
-  is_published: boolean;
+  is_published: boolean; is_completed: boolean;
   status: "locked" | "active" | "completed";
   assignment: AssignmentOut | null;
+  files: ModuleFile[];
 }
 interface Cycle {
   id: string; student_name: string; mentor_name: string;
@@ -61,7 +64,6 @@ const moduleSchema = z.object({
   is_published: z.boolean(),
 });
 type ModuleValues = z.infer<typeof moduleSchema>;
-// live_class_enabled replaces live_class_url — true = built-in room enabled for this week
 
 const recordingSchema = z.object({
   recording_url: z.string().url("Enter a valid URL"),
@@ -83,8 +85,11 @@ type AddWeekValues = z.infer<typeof addWeekSchema>;
 
 type Tab = "roadmap" | "modules" | "live" | "recordings";
 
-function StatusIcon({ status }: { status: LMSModule["status"] }) {
-  if (status === "completed") return <CheckCircle2 className="h-4 w-4 text-success" />;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function StatusIcon({ status, isCompleted }: { status: LMSModule["status"]; isCompleted: boolean }) {
+  if (isCompleted || status === "completed") return <CheckCircle2 className="h-4 w-4 text-success" />;
   if (status === "active") return <Circle className="h-4 w-4 fill-role-mentor text-role-mentor" />;
   return <Lock className="h-3.5 w-3.5 text-muted" />;
 }
@@ -104,6 +109,13 @@ function FeedbackBanner({ fb, onDismiss }: { fb: { type: "success" | "error"; ms
   );
 }
 
+function formatBytes(n: number | null) {
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -121,35 +133,8 @@ export default function MentorLmsPage() {
   const [advancing, setAdvancing] = React.useState(false);
   const [roadmapText, setRoadmapText] = React.useState("");
   const [savingRoadmap, setSavingRoadmap] = React.useState(false);
-  // Material file for the active module
-  const [materialFile, setMaterialFile] = React.useState<File | null>(null);
-
-  const uploadMaterial = async (file: File) => {
-    if (!activeModule || !cycle) return;
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setFeedback({ type: "error", msg: "Only PDF files are accepted." });
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-    setFeedback(null);
-    try {
-      const res = await fetch(`/api/lms/cycles/${cycle.id}/modules/${activeModule.id}/materials`, {
-        method: "POST", body: formData,
-      });
-      const resource = await res.json();
-      if (!res.ok) {
-        setFeedback({ type: "error", msg: resource.error ?? "PDF upload failed." });
-        return;
-      }
-      setMaterialFile(file);
-      appendRes(resource);
-      setFeedback({ type: "success", msg: `“${file.name}” uploaded. Save the module to publish it to the student.` });
-    } catch {
-      setFeedback({ type: "error", msg: "Could not reach the upload service." });
-    }
-  };
+  const [uploadingFile, setUploadingFile] = React.useState(false);
+  const [completingModule, setCompletingModule] = React.useState(false);
 
   const fetchCycle = React.useCallback(async () => {
     try {
@@ -167,14 +152,12 @@ export default function MentorLmsPage() {
 
   const activeModule = cycle?.modules.find((m) => m.id === selectedId) ?? null;
 
-  // Module form
+  // Forms
   const moduleForm = useForm<ModuleValues>({
     resolver: zodResolver(moduleSchema),
     defaultValues: { title: "", objectives: "", assignment_prompt: "", live_class_enabled: false, learning_resources: [], is_published: false },
   });
-  const { fields: resFields, append: appendRes, remove: removeRes } = useFieldArray({
-    control: moduleForm.control, name: "learning_resources",
-  });
+  const { fields: resFields, append: appendRes, remove: removeRes } = useFieldArray({ control: moduleForm.control, name: "learning_resources" });
 
   React.useEffect(() => {
     if (!activeModule) return;
@@ -186,10 +169,24 @@ export default function MentorLmsPage() {
       learning_resources: activeModule.learning_resources ?? [],
       is_published: activeModule.is_published,
     });
-    setMaterialFile(null);
     setFeedback(null);
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const recordingForm = useForm<RecordingValues>({ resolver: zodResolver(recordingSchema) });
+  React.useEffect(() => {
+    if (!activeModule) return;
+    recordingForm.reset({ recording_url: activeModule.recording_url ?? "", recording_title: activeModule.recording_title ?? "" });
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const gradingForm = useForm<GradingValues>({ resolver: zodResolver(gradingSchema) });
+  React.useEffect(() => {
+    if (!activeModule?.assignment) return;
+    gradingForm.reset({ grade: activeModule.assignment.grade ?? undefined, feedback: activeModule.assignment.feedback ?? "" });
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addWeekForm = useForm<AddWeekValues>({ resolver: zodResolver(addWeekSchema) });
+
+  // ── Actions ──
   const onSaveModule = async (values: ModuleValues) => {
     if (!activeModule || !cycle) return;
     setFeedback(null);
@@ -207,36 +204,20 @@ export default function MentorLmsPage() {
     });
     const d = await res.json();
     if (!res.ok) { setFeedback({ type: "error", msg: d.error ?? "Save failed." }); return; }
-    setFeedback({ type: "success", msg: `Week ${activeModule.week_number} saved${values.is_published ? " and published to student" : " as draft"}.` });
+    setFeedback({ type: "success", msg: `Week ${activeModule.week_number} saved${values.is_published ? " and published" : " as draft"}.` });
     await fetchCycle();
   };
-
-  // Recording form
-  const recordingForm = useForm<RecordingValues>({ resolver: zodResolver(recordingSchema) });
-  React.useEffect(() => {
-    if (!activeModule) return;
-    recordingForm.reset({ recording_url: activeModule.recording_url ?? "", recording_title: activeModule.recording_title ?? "" });
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSaveRecording = async (values: RecordingValues) => {
     if (!activeModule || !cycle) return;
     const res = await fetch(`/api/lms/cycles/${cycle.id}/modules/${activeModule.id}/recording`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values),
     });
     const d = await res.json();
     if (!res.ok) { setFeedback({ type: "error", msg: d.error ?? "Save failed." }); return; }
-    setFeedback({ type: "success", msg: "Recording saved. Students can now watch it." });
+    setFeedback({ type: "success", msg: "Recording saved." });
     await fetchCycle();
   };
-
-  // Grading form
-  const gradingForm = useForm<GradingValues>({ resolver: zodResolver(gradingSchema) });
-  React.useEffect(() => {
-    if (!activeModule?.assignment) return;
-    gradingForm.reset({ grade: activeModule.assignment.grade ?? undefined, feedback: activeModule.assignment.feedback ?? "" });
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onGrade = async (values: GradingValues) => {
     if (!activeModule) return;
@@ -245,12 +226,10 @@ export default function MentorLmsPage() {
     });
     const d = await res.json();
     if (!res.ok) { setFeedback({ type: "error", msg: d.error ?? "Grading failed." }); return; }
-    setFeedback({ type: "success", msg: `Grade ${values.grade}/100 saved for ${cycle?.student_name}.` });
+    setFeedback({ type: "success", msg: `Grade ${values.grade}/100 saved.` });
     await fetchCycle();
   };
 
-  // Add week
-  const addWeekForm = useForm<AddWeekValues>({ resolver: zodResolver(addWeekSchema) });
   const onAddWeek = async (values: AddWeekValues) => {
     if (!cycle) return;
     const res = await fetch(`/api/lms/cycles/${cycle.id}/modules`, {
@@ -265,7 +244,7 @@ export default function MentorLmsPage() {
   };
 
   const onDelete = async (moduleId: string) => {
-    if (!cycle || !confirm("Remove this week? All student submissions will also be deleted.")) return;
+    if (!cycle || !confirm("Remove this week? All submissions will also be deleted.")) return;
     setDeleting(moduleId);
     const res = await fetch(`/api/lms/cycles/${cycle.id}/modules/${moduleId}`, { method: "DELETE" });
     if (res.ok || res.status === 204) { await fetchCycle(); setSelectedId(null); }
@@ -293,27 +272,62 @@ export default function MentorLmsPage() {
     setSavingRoadmap(false);
     const d = await res.json();
     if (!res.ok) setFeedback({ type: "error", msg: d.error ?? "Save failed." });
-    else setFeedback({ type: "success", msg: "Roadmap saved. Students can see the updated plan." });
+    else setFeedback({ type: "success", msg: "Roadmap saved." });
   };
 
-  if (loading) return (
-    <div className="flex items-center gap-2 py-20 text-sm text-muted">
-      <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-    </div>
-  );
-  if (pageError) return (
-    <div className="rounded-sm border border-danger/30 bg-danger/[0.08] px-4 py-3 text-sm text-danger">
-      <AlertCircle className="mr-2 inline h-4 w-4" /> {pageError}
-    </div>
-  );
+  const onUploadFile = async (file: File) => {
+    if (!activeModule || !cycle) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setFeedback({ type: "error", msg: "Only PDF files are accepted." }); return;
+    }
+    setUploadingFile(true);
+    setFeedback(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/lms/cycles/${cycle.id}/modules/${activeModule.id}/materials`, {
+        method: "POST", body: formData,
+      });
+      const d = await res.json();
+      if (!res.ok) { setFeedback({ type: "error", msg: d.error ?? "Upload failed." }); return; }
+      setFeedback({ type: "success", msg: `"${file.name}" uploaded. Students can download it from the Downloads tab.` });
+      await fetchCycle();
+    } catch { setFeedback({ type: "error", msg: "Upload failed." }); }
+    finally { setUploadingFile(false); }
+  };
+
+  const onDeleteFile = async (fileId: string) => {
+    if (!confirm("Remove this file?")) return;
+    const res = await fetch(`/api/lms/files/delete/${fileId}`, { method: "DELETE" });
+    if (res.ok || res.status === 204) { await fetchCycle(); }
+    else setFeedback({ type: "error", msg: "Could not delete file." });
+  };
+
+  const onToggleComplete = async () => {
+    if (!activeModule || !cycle) return;
+    setCompletingModule(true);
+    const action = activeModule.is_completed ? "reopen" : "complete";
+    const res = await fetch(`/api/lms/cycles/${cycle.id}/modules/${activeModule.id}/${action}`, { method: "PATCH" });
+    const d = await res.json();
+    if (!res.ok) setFeedback({ type: "error", msg: d.error ?? "Action failed." });
+    else {
+      setFeedback({ type: "success", msg: action === "complete" ? "Module marked as completed. Reflected on student portal immediately." : "Module reopened." });
+      await fetchCycle();
+    }
+    setCompletingModule(false);
+  };
+
+  // ── Loading / error ──
+  if (loading) return <div className="flex items-center gap-2 py-20 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
+  if (pageError) return <div className="rounded-sm border border-danger/30 bg-danger/[0.08] px-4 py-3 text-sm text-danger"><AlertCircle className="mr-2 inline h-4 w-4" /> {pageError}</div>;
   if (!cycle) return null;
 
   const recordings = cycle.modules.filter((m) => m.recording_url);
   const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "roadmap",    label: "Roadmap",       icon: Map },
+    { id: "roadmap",    label: "Roadmap",         icon: Map      },
     { id: "modules",    label: "Weeks / Modules", icon: BookOpen },
-    { id: "live",       label: "Live Session",  icon: Video },
-    { id: "recordings", label: "Recordings",    icon: PlayCircle },
+    { id: "live",       label: "Live Session",    icon: Video    },
+    { id: "recordings", label: "Recordings",      icon: PlayCircle },
   ];
 
   return (
@@ -331,32 +345,26 @@ export default function MentorLmsPage() {
 
       {feedback && <FeedbackBanner fb={feedback} onDismiss={() => setFeedback(null)} />}
 
-      {/* Tab bar */}
+      {/* Tabs */}
       <div className="mb-6 flex gap-1 overflow-x-auto rounded-sm border border-line bg-surface p-1">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={cn(
-              "flex shrink-0 items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors",
-              tab === t.id ? "bg-ink text-paper" : "text-muted hover:text-ink"
-            )}>
+            className={cn("flex shrink-0 items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors",
+              tab === t.id ? "bg-ink text-paper" : "text-muted hover:text-ink")}>
             <t.icon className="h-3.5 w-3.5" /> {t.label}
           </button>
         ))}
       </div>
 
-      {/* ══════════════ ROADMAP ══════════════ */}
+      {/* ══ ROADMAP ══ */}
       {tab === "roadmap" && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Map className="h-4 w-4" /> Programme Roadmap</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Map className="h-4 w-4" /> Programme Roadmap</CardTitle></CardHeader>
           <CardContent className="p-5 space-y-4">
-            <p className="text-sm text-muted">
-              Write a free-form overview of the entire programme. Students can read this at any time from their portal.
-            </p>
+            <p className="text-sm text-muted">Write a free-form overview of the programme. Students can read this at any time.</p>
             <Textarea rows={14} value={roadmapText} onChange={(e) => setRoadmapText(e.target.value)}
               className="font-mono text-sm"
-              placeholder={"Weeks 1–3: Foundation\n  – Audit current skills\n  – Define 12-week goal\n\nWeeks 4–8: Skill sprint\n  – Case studies & mock interviews\n\nWeeks 9–12: Launch\n  – Portfolio, negotiation, handoff"} />
+              placeholder={"Weeks 1–3: Foundation\n  – Audit current skills\n  – Define goal\n\nWeeks 4–8: Sprint\n  – Case studies & mock interviews\n\nWeeks 9–12: Launch\n  – Portfolio, negotiation, handoff"} />
             <Button onClick={onSaveRoadmap} disabled={savingRoadmap}>
               {savingRoadmap ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Roadmap</>}
             </Button>
@@ -364,7 +372,7 @@ export default function MentorLmsPage() {
         </Card>
       )}
 
-      {/* ══════════════ MODULES ══════════════ */}
+      {/* ══ MODULES ══ */}
       {tab === "modules" && (
         <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
           {/* Sidebar */}
@@ -372,8 +380,7 @@ export default function MentorLmsPage() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between text-sm">
                 Weeks
-                <button onClick={() => setShowAddWeek((v) => !v)} title="Add week"
-                  className="rounded-sm p-1 text-muted hover:text-ink">
+                <button onClick={() => setShowAddWeek((v) => !v)} title="Add week" className="rounded-sm p-1 text-muted hover:text-ink">
                   <Plus className="h-4 w-4" />
                 </button>
               </CardTitle>
@@ -385,16 +392,12 @@ export default function MentorLmsPage() {
                   <div>
                     <Label>Week number</Label>
                     <Input type="number" min={1} {...addWeekForm.register("week_number")} />
-                    {addWeekForm.formState.errors.week_number && (
-                      <p className="mt-1 text-xs text-danger">{addWeekForm.formState.errors.week_number.message}</p>
-                    )}
+                    {addWeekForm.formState.errors.week_number && <p className="mt-1 text-xs text-danger">{addWeekForm.formState.errors.week_number.message}</p>}
                   </div>
                   <div>
                     <Label>Title</Label>
                     <Input placeholder="e.g. Portfolio Review" {...addWeekForm.register("title")} />
-                    {addWeekForm.formState.errors.title && (
-                      <p className="mt-1 text-xs text-danger">{addWeekForm.formState.errors.title.message}</p>
-                    )}
+                    {addWeekForm.formState.errors.title && <p className="mt-1 text-xs text-danger">{addWeekForm.formState.errors.title.message}</p>}
                   </div>
                   <div className="flex gap-2">
                     <Button type="submit" size="sm" disabled={addWeekForm.formState.isSubmitting}>
@@ -411,17 +414,14 @@ export default function MentorLmsPage() {
                 {cycle.modules.map((m) => (
                   <li key={m.id} className="group flex items-center">
                     <button onClick={() => setSelectedId(m.id)}
-                      className={cn(
-                        "flex flex-1 items-start gap-2.5 rounded-sm px-3 py-2.5 text-left text-sm transition-colors",
-                        m.id === selectedId ? "bg-ink text-paper" : "hover:bg-ink/[0.05]"
-                      )}>
-                      <span className="mt-0.5 shrink-0"><StatusIcon status={m.status} /></span>
+                      className={cn("flex flex-1 items-start gap-2.5 rounded-sm px-3 py-2.5 text-left text-sm transition-colors",
+                        m.id === selectedId ? "bg-ink text-paper" : "hover:bg-ink/[0.05]")}>
+                      <span className="mt-0.5 shrink-0"><StatusIcon status={m.status} isCompleted={m.is_completed} /></span>
                       <span>
-                        <span className={cn("block text-[11px]", m.id === selectedId ? "text-paper/70" : "text-muted")}>
-                          Week {m.week_number}
-                        </span>
+                        <span className={cn("block text-[11px]", m.id === selectedId ? "text-paper/70" : "text-muted")}>Week {m.week_number}</span>
                         <span className="font-medium leading-tight">{m.title || "Untitled"}</span>
                         {!m.is_published && <span className="ml-1 text-[10px] text-muted">(draft)</span>}
+                        {m.is_completed && <span className="ml-1 text-[10px] text-success">(ended)</span>}
                       </span>
                     </button>
                     <button onClick={() => onDelete(m.id)} disabled={deleting === m.id}
@@ -430,24 +430,50 @@ export default function MentorLmsPage() {
                     </button>
                   </li>
                 ))}
-                {cycle.modules.length === 0 && (
-                  <li className="px-3 py-4 text-xs text-muted">No weeks yet. Click + to add one.</li>
-                )}
+                {cycle.modules.length === 0 && <li className="px-3 py-4 text-xs text-muted">No weeks yet. Click + to add one.</li>}
               </ul>
             </CardContent>
           </Card>
 
-          {/* Editor */}
+          {/* Editor panel */}
           {activeModule ? (
             <div className="space-y-5">
-              {/* ── Module content editor ── */}
+              {/* Module status bar — complete / reopen */}
+              <div className="flex items-center justify-between rounded-sm border border-line bg-surface px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <StatusIcon status={activeModule.status} isCompleted={activeModule.is_completed} />
+                  <div>
+                    <p className="text-sm font-medium">
+                      Week {activeModule.week_number} — {activeModule.is_completed ? "Ended" : activeModule.status}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {activeModule.is_completed
+                        ? "This module has been marked as ended. Students see it as completed."
+                        : "Mark as ended when you're done with this week's content."}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant={activeModule.is_completed ? "outline" : "outline"}
+                  className={cn("shrink-0 gap-1.5",
+                    activeModule.is_completed
+                      ? "border-muted text-muted hover:border-ink hover:text-ink"
+                      : "border-success/40 text-success hover:bg-success/[0.06] hover:border-success")}
+                  disabled={completingModule}
+                  onClick={onToggleComplete}
+                >
+                  {completingModule ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
+                    activeModule.is_completed ? <><RotateCcw className="h-3.5 w-3.5" /> Reopen</> : <><Flag className="h-3.5 w-3.5" /> End Module</>}
+                </Button>
+              </div>
+
+              {/* Module editor */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     Week {activeModule.week_number} — Edit Module
-                    {activeModule.is_published
-                      ? <Badge tone="success">Published</Badge>
-                      : <Badge tone="neutral">Draft</Badge>}
+                    {activeModule.is_published ? <Badge tone="success">Published</Badge> : <Badge tone="neutral">Draft</Badge>}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5">
@@ -455,114 +481,99 @@ export default function MentorLmsPage() {
                     <div>
                       <Label htmlFor="mod-title">Week title</Label>
                       <Input id="mod-title" {...moduleForm.register("title")} />
-                      {moduleForm.formState.errors.title && (
-                        <p className="mt-1 text-xs text-danger">{moduleForm.formState.errors.title.message}</p>
-                      )}
+                      {moduleForm.formState.errors.title && <p className="mt-1 text-xs text-danger">{moduleForm.formState.errors.title.message}</p>}
                     </div>
 
                     <div>
-                      <Label htmlFor="mod-obj">
-                        Learning objectives <span className="text-xs font-normal text-muted">(one per line)</span>
-                      </Label>
-                      <Textarea id="mod-obj" rows={4}
-                        placeholder={"Define a 12-week outcome statement\nAudit current skill gaps\nAlign on weekly check-in cadence"}
-                        {...moduleForm.register("objectives")} />
-                      {moduleForm.formState.errors.objectives && (
-                        <p className="mt-1 text-xs text-danger">{moduleForm.formState.errors.objectives.message}</p>
-                      )}
+                      <Label htmlFor="mod-obj">Learning objectives <span className="text-xs font-normal text-muted">(one per line)</span></Label>
+                      <Textarea id="mod-obj" rows={4} placeholder={"Define outcome statement\nAudit skill gaps\nAlign on cadence"} {...moduleForm.register("objectives")} />
+                      {moduleForm.formState.errors.objectives && <p className="mt-1 text-xs text-danger">{moduleForm.formState.errors.objectives.message}</p>}
                     </div>
 
-                    {/* ── Learning resources ── */}
+                    {/* Learning resources */}
                     <div>
                       <div className="mb-2 flex items-center justify-between">
-                        <Label className="mb-0 flex items-center gap-1.5">
-                          <Link2 className="h-3.5 w-3.5 text-muted" /> Learning resources
-                        </Label>
+                        <Label className="mb-0 flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5 text-muted" /> Learning resources</Label>
                         <button type="button" onClick={() => appendRes({ label: "", url: "" })}
                           className="flex items-center gap-1 text-xs text-accent hover:underline">
                           <Plus className="h-3 w-3" /> Add link
                         </button>
                       </div>
-                      {resFields.length === 0 && (
-                        <p className="text-xs text-muted">Add articles, videos, or docs for the student to read/watch.</p>
-                      )}
+                      {resFields.length === 0 && <p className="text-xs text-muted">Add articles, videos, or docs.</p>}
                       <div className="space-y-2">
                         {resFields.map((field, idx) => (
                           <div key={field.id} className="flex gap-2">
-                            <Input className="w-40 shrink-0" placeholder="Label"
-                              {...moduleForm.register(`learning_resources.${idx}.label`)} />
-                            <Input className="flex-1" placeholder="https://..."
-                              {...moduleForm.register(`learning_resources.${idx}.url`)} />
-                            <button type="button" onClick={() => removeRes(idx)}
-                              className="p-2 text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button>
+                            <Input className="w-40 shrink-0" placeholder="Label" {...moduleForm.register(`learning_resources.${idx}.label`)} />
+                            <Input className="flex-1" placeholder="https://..." {...moduleForm.register(`learning_resources.${idx}.url`)} />
+                            <button type="button" onClick={() => removeRes(idx)} className="p-2 text-muted hover:text-danger"><X className="h-3.5 w-3.5" /></button>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    {/* ── Module material upload (PDF) ── */}
+                    {/* PDF upload */}
                     <div>
                       <Label className="mb-1 block flex items-center gap-1.5">
-                        <FileText className="h-3.5 w-3.5 text-muted" /> Module material
-                        <span className="text-xs font-normal text-muted">(PDF — uploaded as a resource)</span>
+                        <FolderOpen className="h-3.5 w-3.5 text-muted" /> Upload module material
+                        <span className="text-xs font-normal text-muted">(PDF — stored in R2, portal-only download)</span>
                       </Label>
                       <label htmlFor="material-file"
                         className="flex cursor-pointer items-center gap-3 rounded-sm border border-dashed border-line px-4 py-3 text-sm transition-colors hover:border-ink">
-                        <UploadCloud className="h-4 w-4 text-muted" />
-                        {materialFile
-                          ? <span className="font-medium text-ink">{materialFile.name}</span>
-                          : <span className="text-muted">Choose a PDF from your computer</span>}
+                        {uploadingFile
+                          ? <><Loader2 className="h-4 w-4 animate-spin text-muted" /> Uploading…</>
+                          : <><UploadCloud className="h-4 w-4 text-muted" /><span className="text-muted">Choose a PDF from your computer</span></>}
                       </label>
                       <input id="material-file" type="file" accept="application/pdf" className="sr-only"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void uploadMaterial(f);
-                        }} />
-                      <p className="mt-1 text-xs text-muted">
-                        The file is added as a downloadable resource link for the student.
-                      </p>
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void onUploadFile(f); e.target.value = ""; }} />
+                      <p className="mt-1 text-xs text-muted">Students can download uploaded files from the Downloads tab in their portal.</p>
+
+                      {/* Uploaded files list */}
+                      {activeModule.files.length > 0 && (
+                        <div className="mt-3 space-y-1">
+                          {activeModule.files.map((f) => (
+                            <div key={f.id} className="flex items-center justify-between rounded-sm border border-line px-3 py-2 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText className="h-3.5 w-3.5 text-muted shrink-0" />
+                                <span className="truncate font-medium">{f.original_name}</span>
+                                {f.size_bytes && <span className="text-muted shrink-0">{formatBytes(f.size_bytes)}</span>}
+                              </div>
+                              <button onClick={() => onDeleteFile(f.id)} className="ml-3 shrink-0 text-muted hover:text-danger" title="Delete file">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    {/* ── Assignment prompt ── */}
+                    {/* Assignment prompt */}
                     <div>
                       <Label htmlFor="mod-assign" className="flex items-center gap-1.5">
                         <ClipboardCheck className="h-3.5 w-3.5 text-muted" /> Assignment prompt
-                        <span className="text-xs font-normal text-muted">(leave empty if no assignment this week)</span>
+                        <span className="text-xs font-normal text-muted">(leave empty for no assignment)</span>
                       </Label>
-                      <Textarea id="mod-assign" rows={3}
-                        placeholder="Submit a 1-page reflection on your career goals as a PDF…"
-                        {...moduleForm.register("assignment_prompt")} />
-                      <p className="mt-1 text-xs text-muted">
-                        If filled, the student will see a file upload section for this week.
-                      </p>
+                      <Textarea id="mod-assign" rows={3} placeholder="Submit a 1-page reflection as a PDF…" {...moduleForm.register("assignment_prompt")} />
                     </div>
 
-                    {/* ── Live class toggle ── */}
+                    {/* Live class toggle */}
                     <div>
-                      <Label className="flex items-center gap-1.5 mb-2">
-                        <Video className="h-3.5 w-3.5 text-accent" /> Live class
-                      </Label>
                       <div className="flex items-center gap-3 rounded-sm border border-line bg-surface px-4 py-3">
-                        <input id="mod-live" type="checkbox" className="h-4 w-4 rounded border-line"
-                          {...moduleForm.register("live_class_enabled")} />
+                        <input id="mod-live" type="checkbox" className="h-4 w-4 rounded border-line" {...moduleForm.register("live_class_enabled")} />
                         <div>
-                          <Label htmlFor="mod-live" className="mb-0 cursor-pointer">Enable live class for this week</Label>
-                          <p className="text-xs text-muted">Student will see a "Join Live Class" button that opens your built-in video room.</p>
+                          <Label htmlFor="mod-live" className="mb-0 flex items-center gap-1.5 cursor-pointer"><Video className="h-3.5 w-3.5 text-accent" /> Enable live class</Label>
+                          <p className="text-xs text-muted">Student sees a "Join Live Class" button opening your video room.</p>
                         </div>
                       </div>
                       {activeModule.live_class_url && (
                         <a href={`/video-class/${cycle.id}?week=${activeModule.week_number}`} className="mt-3 inline-block">
-                          <Button type="button" size="sm" className="gap-2">
-                            <Video className="h-3.5 w-3.5" /> Start Live Class
-                          </Button>
+                          <Button type="button" size="sm" className="gap-2"><Video className="h-3.5 w-3.5" /> Start Live Class</Button>
                         </a>
                       )}
                     </div>
 
-                    {/* ── Publish ── */}
+                    {/* Publish */}
                     <div className="flex items-center gap-3 rounded-sm border border-line bg-surface px-4 py-3">
-                      <input id="mod-publish" type="checkbox" className="h-4 w-4 rounded border-line"
-                        {...moduleForm.register("is_published")} />
+                      <input id="mod-publish" type="checkbox" className="h-4 w-4 rounded border-line" {...moduleForm.register("is_published")} />
                       <div>
                         <Label htmlFor="mod-publish" className="mb-0 cursor-pointer">Publish to student</Label>
                         <p className="text-xs text-muted">Students only see published weeks.</p>
@@ -570,21 +581,15 @@ export default function MentorLmsPage() {
                     </div>
 
                     <Button type="submit" disabled={moduleForm.formState.isSubmitting}>
-                      {moduleForm.formState.isSubmitting
-                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
-                        : <><Save className="h-3.5 w-3.5" /> Save Module</>}
+                      {moduleForm.formState.isSubmitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Module</>}
                     </Button>
                   </form>
                 </CardContent>
               </Card>
 
-              {/* ── Grade assignment ── */}
+              {/* Grade assignment */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardCheck className="h-4 w-4" /> Grade Assignment
-                  </CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Grade Assignment</CardTitle></CardHeader>
                 <CardContent className="p-5">
                   {!activeModule.assignment_prompt ? (
                     <p className="text-sm text-muted">No assignment configured for this week.</p>
@@ -595,75 +600,51 @@ export default function MentorLmsPage() {
                       <div className="flex items-center gap-2 rounded-sm border border-line px-3 py-2 text-sm">
                         <FileCheck2 className="h-4 w-4 text-success" />
                         <span className="flex-1 font-medium">{activeModule.assignment.submitted_file_name}</span>
-                        {activeModule.assignment.grade != null && (
-                          <Badge tone="success">Graded {activeModule.assignment.grade}/100</Badge>
-                        )}
+                        {activeModule.assignment.grade != null && <Badge tone="success">Graded {activeModule.assignment.grade}/100</Badge>}
                       </div>
                       <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
                         <div>
                           <Label htmlFor="grade">Score (0–100)</Label>
                           <Input id="grade" type="number" min={0} max={100} {...gradingForm.register("grade")} />
-                          {gradingForm.formState.errors.grade && (
-                            <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.grade.message}</p>
-                          )}
+                          {gradingForm.formState.errors.grade && <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.grade.message}</p>}
                         </div>
                         <div>
-                          <Label htmlFor="feedback">Feedback for student</Label>
+                          <Label htmlFor="feedback">Feedback</Label>
                           <Textarea id="feedback" rows={3} {...gradingForm.register("feedback")} />
-                          {gradingForm.formState.errors.feedback && (
-                            <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.feedback.message}</p>
-                          )}
+                          {gradingForm.formState.errors.feedback && <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.feedback.message}</p>}
                         </div>
                       </div>
                       <Button type="submit" disabled={gradingForm.formState.isSubmitting}>
-                        {gradingForm.formState.isSubmitting
-                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
-                          : "Submit Grade"}
+                        {gradingForm.formState.isSubmitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : "Submit Grade"}
                       </Button>
                     </form>
                   )}
                 </CardContent>
               </Card>
 
-              {/* ── Recording ── */}
+              {/* Recording */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mic className="h-4 w-4" /> Session Recording — Week {activeModule.week_number}
-                  </CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Mic className="h-4 w-4" /> Session Recording — Week {activeModule.week_number}</CardTitle></CardHeader>
                 <CardContent className="p-5 space-y-4">
-                  <p className="text-sm text-muted">
-                    After your live session, paste the recording URL. Students will see a Watch button.
-                  </p>
+                  <p className="text-sm text-muted">Paste a recording URL after your session. Students see a Watch button.</p>
                   <form onSubmit={recordingForm.handleSubmit(onSaveRecording)} className="space-y-4" noValidate>
                     <div>
                       <Label htmlFor="rec-title">Recording title <span className="text-xs font-normal text-muted">(optional)</span></Label>
-                      <Input id="rec-title" placeholder={`Week ${activeModule.week_number} — Session Recording`}
-                        {...recordingForm.register("recording_title")} />
+                      <Input id="rec-title" placeholder={`Week ${activeModule.week_number} — Session Recording`} {...recordingForm.register("recording_title")} />
                     </div>
                     <div>
                       <Label htmlFor="rec-url">Recording URL <span className="text-xs font-normal text-muted">(YouTube, Loom, Drive…)</span></Label>
-                      <Input id="rec-url" type="url" placeholder="https://youtu.be/..."
-                        {...recordingForm.register("recording_url")} />
-                      {recordingForm.formState.errors.recording_url && (
-                        <p className="mt-1 text-xs text-danger">{recordingForm.formState.errors.recording_url.message}</p>
-                      )}
+                      <Input id="rec-url" type="url" placeholder="https://youtu.be/..." {...recordingForm.register("recording_url")} />
+                      {recordingForm.formState.errors.recording_url && <p className="mt-1 text-xs text-danger">{recordingForm.formState.errors.recording_url.message}</p>}
                     </div>
                     {activeModule.recording_url && (
                       <div className="flex items-center gap-2 rounded-sm border border-success/30 bg-success/[0.06] px-3 py-2 text-xs">
                         <PlayCircle className="h-3.5 w-3.5 text-success shrink-0" />
-                        Saved:{" "}
-                        <a href={activeModule.recording_url} target="_blank" rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-ink truncate max-w-xs">
-                          {activeModule.recording_title || activeModule.recording_url}
-                        </a>
+                        Saved: <span className="truncate max-w-xs underline">{activeModule.recording_title || activeModule.recording_url}</span>
                       </div>
                     )}
                     <Button type="submit" disabled={recordingForm.formState.isSubmitting}>
-                      {recordingForm.formState.isSubmitting
-                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
-                        : <><Mic className="h-3.5 w-3.5" /> Save Recording</>}
+                      {recordingForm.formState.isSubmitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Mic className="h-3.5 w-3.5" /> Save Recording</>}
                     </Button>
                   </form>
                 </CardContent>
@@ -677,83 +658,48 @@ export default function MentorLmsPage() {
         </div>
       )}
 
-      {/* ══════════════ LIVE SESSION ══════════════ */}
+      {/* ══ LIVE SESSION ══ */}
       {tab === "live" && (
-        <div className="space-y-5">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Video className="h-4 w-4 text-accent" /> Live Class Sessions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5 space-y-6">
-              {/* Quick-start for current week */}
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Video className="h-4 w-4 text-accent" /> Live Class Sessions</CardTitle></CardHeader>
+          <CardContent className="p-5 space-y-5">
+            <div className="rounded-sm border border-accent/30 bg-accent/[0.04] p-4 space-y-3">
+              <p className="text-sm font-medium">Start a live session</p>
+              <p className="text-xs text-muted">Enable live class on a week (Modules tab) then click Start below. The student sees a Join button automatically.</p>
               {(() => {
-                const currentMod = cycle.modules.find((m) => m.week_number === cycle.current_week);
-                return (
-                  <div className="rounded-sm border border-accent/30 bg-accent/[0.04] p-4 space-y-3">
-                    <p className="text-sm font-medium">Week {cycle.current_week} — current week</p>
-                    <p className="text-xs text-muted">
-                      Start the built-in live class room for this week. Your student will see a "Join Live Class" button on their portal once live class is enabled for this week.
-                    </p>
-                    {currentMod?.live_class_url ? (
-                      <a href={`/video-class/${cycle.id}?week=${cycle.current_week}`}>
-                        <Button className="gap-2">
-                          <Video className="h-4 w-4" /> Start Live Class — Week {cycle.current_week}
-                        </Button>
-                      </a>
-                    ) : (
-                      <div>
-                        <p className="text-xs text-muted mb-2">Live class not enabled for this week yet.</p>
-                        <Button variant="outline" size="sm"
-                          onClick={() => { setTab("modules"); setSelectedId(currentMod?.id ?? null); }}>
-                          Enable in Modules tab
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+                const cur = cycle.modules.find((m) => m.week_number === cycle.current_week);
+                return cur?.live_class_url ? (
+                  <a href={`/video-class/${cycle.id}?week=${cycle.current_week}`}>
+                    <Button className="gap-2"><Video className="h-4 w-4" /> Start Live Class — Week {cycle.current_week}</Button>
+                  </a>
+                ) : (
+                  <p className="text-sm text-muted">Live class not enabled for week {cycle.current_week}. Enable it in the Modules tab.</p>
                 );
               })()}
-
-              {/* All weeks with live class enabled */}
-              <div>
-                <p className="mb-3 text-sm font-medium">All weeks with live class enabled</p>
-                <div className="space-y-2">
-                  {cycle.modules.filter((m) => m.live_class_url).map((m) => (
-                    <div key={m.id} className="flex items-center justify-between rounded-sm border border-line px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium">Week {m.week_number} — {m.title}</p>
-                        <p className="text-xs text-muted">Live class room available</p>
-                      </div>
-                      <a href={`/video-class/${cycle.id}?week=${m.week_number}`}>
-                        <Button size="sm" className="gap-1.5">
-                          <Video className="h-3.5 w-3.5" /> Start Class
-                        </Button>
-                      </a>
-                    </div>
-                  ))}
-                  {cycle.modules.every((m) => !m.live_class_url) && (
-                    <p className="text-sm text-muted">
-                      No weeks have live class enabled yet. Go to the Modules tab, select a week, and check "Enable live class".
-                    </p>
-                  )}
+            </div>
+            <div className="space-y-2">
+              {cycle.modules.filter((m) => m.live_class_url).map((m) => (
+                <div key={m.id} className="flex items-center justify-between rounded-sm border border-line px-4 py-3">
+                  <div><p className="text-sm font-medium">Week {m.week_number} — {m.title}</p><p className="text-xs text-muted">Live class room available</p></div>
+                  <a href={`/video-class/${cycle.id}?week=${m.week_number}`}>
+                    <Button size="sm" className="gap-1.5"><Video className="h-3.5 w-3.5" /> Start</Button>
+                  </a>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              ))}
+              {cycle.modules.every((m) => !m.live_class_url) && (
+                <p className="text-sm text-muted">No weeks have live class enabled yet.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* ══════════════ RECORDINGS ══════════════ */}
+      {/* ══ RECORDINGS ══ */}
       {tab === "recordings" && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><PlayCircle className="h-4 w-4" /> Session Recordings</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><PlayCircle className="h-4 w-4" /> Session Recordings</CardTitle></CardHeader>
           <CardContent className="p-5">
-            <p className="mb-4 text-sm text-muted">
-              Add recording URLs in the Modules tab (select a week → Session Recording). All uploaded recordings are listed here and visible to the student.
-            </p>
+            <p className="mb-4 text-sm text-muted">Add recording URLs in the Modules tab → select a week → Session Recording.</p>
             {recordings.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-line py-12 text-sm text-muted">
                 <PlayCircle className="h-5 w-5" /> No recordings yet.
@@ -762,14 +708,9 @@ export default function MentorLmsPage() {
               <div className="space-y-3">
                 {recordings.map((m) => (
                   <div key={m.id} className="flex items-center justify-between rounded-sm border border-line px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium">{m.recording_title || `Week ${m.week_number} — ${m.title}`}</p>
-                      <p className="text-xs text-muted">Week {m.week_number}</p>
-                    </div>
+                    <div><p className="text-sm font-medium">{m.recording_title || `Week ${m.week_number} — ${m.title}`}</p><p className="text-xs text-muted">Week {m.week_number}</p></div>
                     <a href={m.recording_url!} target="_blank" rel="noopener noreferrer">
-                      <Button size="sm" variant="outline">
-                        <PlayCircle className="h-3.5 w-3.5" /> Watch <ExternalLink className="h-3 w-3" />
-                      </Button>
+                      <Button size="sm" variant="outline"><PlayCircle className="h-3.5 w-3.5" /> Watch</Button>
                     </a>
                   </div>
                 ))}

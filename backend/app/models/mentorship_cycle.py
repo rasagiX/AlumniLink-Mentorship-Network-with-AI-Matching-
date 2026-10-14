@@ -49,6 +49,8 @@ class LMSModule(Base):
     recording_url = Column(String, nullable=True)
     recording_title = Column(String, nullable=True)
     is_published = Column(Boolean, nullable=False, default=False)
+    # Mentor/senior can mark a module as ended/completed regardless of cycle week
+    is_completed = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -101,4 +103,27 @@ class SessionBooking(Base):
     proposed_time = Column(String, nullable=True)       # e.g. "3:00 PM"
     note = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="pending")   # "pending" | "confirmed" | "rejected"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModuleFile(Base):
+    """
+    A file (PDF/material) uploaded by a mentor for a specific LMS module.
+    Stored in Cloudflare R2 (or local fallback). Students can view and
+    download from the portal's Downloads tab.
+    is_downloadable=True means students CAN explicitly download it.
+    """
+
+    __tablename__ = "module_files"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    module_id = Column(String, ForeignKey("lms_modules.id"), nullable=False, index=True)
+    cycle_id = Column(String, ForeignKey("mentorship_cycles.id"), nullable=False, index=True)
+    uploader_id = Column(String, nullable=False)
+    original_name = Column(String, nullable=False)
+    storage_key = Column(String, nullable=False, unique=True)  # R2 key or local path
+    content_type = Column(String, nullable=False, default="application/pdf")
+    size_bytes = Column(Integer, nullable=True)
+    # If True the student sees a Download button; if False they can only view inline
+    is_downloadable = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

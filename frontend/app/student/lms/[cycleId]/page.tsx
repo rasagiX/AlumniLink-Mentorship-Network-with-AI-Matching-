@@ -4,8 +4,8 @@ import * as React from "react";
 import { useParams } from "next/navigation";
 import {
   CheckCircle2, Circle, Lock, UploadCloud, Video, FileCheck2,
-  Loader2, AlertCircle, PlayCircle, Map,
-  BookOpen, ClipboardList, Link2, FileText, ExternalLink,
+  Loader2, AlertCircle, PlayCircle, Map, BookOpen, ClipboardList,
+  Link2, FileText, ExternalLink, Download, FolderOpen, Flag,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,10 @@ import { cn } from "@/lib/utils";
 // Types
 // ---------------------------------------------------------------------------
 interface LearningResource { label: string; url: string }
+interface ModuleFile {
+  id: string; original_name: string; storage_key: string;
+  size_bytes: number | null; is_downloadable: boolean;
+}
 interface AssignmentOut {
   id: string; submitted_file_name: string;
   grade: number | null; feedback: string | null;
@@ -28,9 +32,10 @@ interface LMSModule {
   assignment_prompt: string | null;
   live_class_url: string | null;
   recording_url: string | null; recording_title: string | null;
-  is_published: boolean;
+  is_published: boolean; is_completed: boolean;
   status: "locked" | "active" | "completed";
   assignment: AssignmentOut | null;
+  files: ModuleFile[];
 }
 interface Cycle {
   id: string; student_name: string; mentor_name: string;
@@ -38,16 +43,26 @@ interface Cycle {
   roadmap: string | null; modules: LMSModule[];
 }
 
-type Tab = "roadmap" | "modules" | "recordings" | "assignments";
+type Tab = "roadmap" | "modules" | "recordings" | "assignments" | "downloads";
 
-function StatusIcon({ status }: { status: LMSModule["status"] }) {
-  if (status === "completed") return <CheckCircle2 className="h-4 w-4 text-success" />;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function StatusIcon({ status, isCompleted }: { status: LMSModule["status"]; isCompleted: boolean }) {
+  if (isCompleted || status === "completed") return <CheckCircle2 className="h-4 w-4 text-success" />;
   if (status === "active") return <Circle className="h-4 w-4 fill-accent text-accent" />;
   return <Lock className="h-3.5 w-3.5 text-muted" />;
 }
 
+function formatBytes(n: number | null) {
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 // ---------------------------------------------------------------------------
-// Assignment upload panel — uses real local file
+// Assignment upload panel
 // ---------------------------------------------------------------------------
 function AssignmentUpload({ module, onSubmitted }: { module: LMSModule; onSubmitted: () => void }) {
   const [dragOver, setDragOver] = React.useState(false);
@@ -59,11 +74,6 @@ function AssignmentUpload({ module, onSubmitted }: { module: LMSModule; onSubmit
     if (!f) return;
     if (f.type !== "application/pdf") { setError("Only PDF files are accepted."); return; }
     setFile(f); setError(null);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setDragOver(false);
-    pickFile(e.dataTransfer.files?.[0] ?? null);
   };
 
   const onSubmit = async () => {
@@ -86,10 +96,7 @@ function AssignmentUpload({ module, onSubmitted }: { module: LMSModule; onSubmit
         <div>
           <p className="font-medium text-success">{module.assignment.submitted_file_name} — submitted</p>
           {module.assignment.grade != null ? (
-            <p className="mt-0.5 text-xs text-muted">
-              Grade: <strong>{module.assignment.grade}/100</strong>
-              {module.assignment.feedback ? ` — ${module.assignment.feedback}` : ""}
-            </p>
+            <p className="mt-0.5 text-xs text-muted">Grade: <strong>{module.assignment.grade}/100</strong>{module.assignment.feedback ? ` — ${module.assignment.feedback}` : ""}</p>
           ) : (
             <p className="mt-0.5 text-xs text-muted">Awaiting mentor review…</p>
           )}
@@ -100,40 +107,20 @@ function AssignmentUpload({ module, onSubmitted }: { module: LMSModule; onSubmit
 
   return (
     <div>
-      {error && (
-        <div className="mb-3 flex items-start gap-2 rounded-sm border border-danger/30 bg-danger/[0.08] px-3 py-2 text-sm text-danger">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
-        </div>
-      )}
+      {error && <div className="mb-3 flex items-start gap-2 rounded-sm border border-danger/30 bg-danger/[0.08] px-3 py-2 text-sm text-danger"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}</div>}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
-        className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-6 py-10 text-center transition-colors",
-          dragOver ? "border-ink bg-ink/[0.04]" : "border-line"
-        )}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files?.[0] ?? null); }}
+        className={cn("flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-6 py-10 text-center transition-colors",
+          dragOver ? "border-ink bg-ink/[0.04]" : "border-line")}
       >
         {file ? (
-          <>
-            <FileText className="h-6 w-6 text-accent" />
-            <p className="text-sm font-medium">{file.name}</p>
-            <p className="text-xs text-muted">{(file.size / 1024).toFixed(0)} KB · PDF</p>
-          </>
+          <><FileText className="h-6 w-6 text-accent" /><p className="text-sm font-medium">{file.name}</p><p className="text-xs text-muted">{formatBytes(file.size)}</p></>
         ) : (
-          <>
-            <UploadCloud className="h-6 w-6 text-muted" />
-            <p className="text-sm">
-              Drag your PDF here, or{" "}
-              <label htmlFor={`file-${module.id}`}
-                className="cursor-pointer font-medium underline underline-offset-2 hover:text-ink">
-                browse
-              </label>
-            </p>
-          </>
+          <><UploadCloud className="h-6 w-6 text-muted" /><p className="text-sm">Drag your PDF here, or <label htmlFor={`file-${module.id}`} className="cursor-pointer font-medium underline underline-offset-2 hover:text-ink">browse</label></p></>
         )}
-        <input id={`file-${module.id}`} type="file" accept="application/pdf" className="sr-only"
-          onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
+        <input id={`file-${module.id}`} type="file" accept="application/pdf" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
       </div>
       <Button onClick={onSubmit} className="mt-4" disabled={submitting || !file}>
         {submitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Submitting…</> : "Submit Assignment"}
@@ -161,7 +148,7 @@ export default function StudentLmsPage() {
       setCycle(d);
       setSelectedId((prev) => {
         if (prev && d.modules.find((m: LMSModule) => m.id === prev)) return prev;
-        return d.modules.find((m: LMSModule) => m.status === "active" && m.is_published)?.id
+        return d.modules.find((m: LMSModule) => (m.status === "active") && m.is_published)?.id
           ?? d.modules.find((m: LMSModule) => m.is_published)?.id
           ?? null;
       });
@@ -171,24 +158,17 @@ export default function StudentLmsPage() {
 
   React.useEffect(() => { fetchCycle(); }, [fetchCycle]);
 
-  if (loading) return (
-    <div className="flex items-center gap-2 py-20 text-sm text-muted">
-      <Loader2 className="h-4 w-4 animate-spin" /> Loading your LMS…
-    </div>
-  );
-  if (pageError) return (
-    <div className="rounded-sm border border-danger/30 bg-danger/[0.08] px-4 py-3 text-sm text-danger">
-      <AlertCircle className="mr-2 inline h-4 w-4" /> {pageError}
-    </div>
-  );
+  if (loading) return <div className="flex items-center gap-2 py-20 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" /> Loading your LMS…</div>;
+  if (pageError) return <div className="rounded-sm border border-danger/30 bg-danger/[0.08] px-4 py-3 text-sm text-danger"><AlertCircle className="mr-2 inline h-4 w-4" /> {pageError}</div>;
   if (!cycle) return null;
 
   const published = cycle.modules.filter((m) => m.is_published);
   const recordings = published.filter((m) => m.recording_url);
   const assignments = published.filter((m) => m.assignment_prompt);
+  // All files across all published modules
+  const allFiles = published.flatMap((m) => m.files.map((f) => ({ ...f, module_title: m.title, week_number: m.week_number })));
   const activeModule = published.find((m) => m.id === selectedId) ?? null;
   const currentWeekMod = published.find((m) => m.week_number === cycle.current_week);
-
   const pendingAssignments = assignments.filter((m) => !m.assignment).length;
 
   const TABS = [
@@ -196,6 +176,7 @@ export default function StudentLmsPage() {
     { id: "modules" as Tab,     label: "Modules",     icon: BookOpen,      badge: published.length },
     { id: "recordings" as Tab,  label: "Recordings",  icon: PlayCircle,    badge: recordings.length },
     { id: "assignments" as Tab, label: "Assignments", icon: ClipboardList, badge: pendingAssignments },
+    { id: "downloads" as Tab,   label: "Downloads",   icon: Download,      badge: allFiles.length },
   ];
 
   return (
@@ -206,15 +187,11 @@ export default function StudentLmsPage() {
         actions={
           currentWeekMod?.live_class_url ? (
             <a href={`/video-class/${cycleId}?week=${cycle.current_week}`}>
-              <Button size="sm" className="gap-2">
-                <Video className="h-3.5 w-3.5" /> Join Live Class
-              </Button>
+              <Button size="sm" className="gap-2"><Video className="h-3.5 w-3.5" /> Join Live Class</Button>
             </a>
           ) : (
             <a href={`/video-class/${cycleId}`}>
-              <Button size="sm" variant="outline">
-                <Video className="h-3.5 w-3.5" /> Start Video Class
-              </Button>
+              <Button size="sm" variant="outline"><Video className="h-3.5 w-3.5" /> Start Video Class</Button>
             </a>
           )
         }
@@ -224,41 +201,31 @@ export default function StudentLmsPage() {
       <div className="mb-6 flex gap-1 overflow-x-auto rounded-sm border border-line bg-surface p-1">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={cn(
-              "flex shrink-0 items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors",
-              tab === t.id ? "bg-ink text-paper" : "text-muted hover:text-ink"
-            )}>
+            className={cn("flex shrink-0 items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors",
+              tab === t.id ? "bg-ink text-paper" : "text-muted hover:text-ink")}>
             <t.icon className="h-3.5 w-3.5" />
             {t.label}
             {t.badge > 0 && (
-              <span className={cn(
-                "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                tab === t.id ? "bg-paper/20 text-paper" : "bg-ink/10 text-ink"
-              )}>{t.badge}</span>
+              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                tab === t.id ? "bg-paper/20 text-paper" : "bg-ink/10 text-ink")}>{t.badge}</span>
             )}
           </button>
         ))}
       </div>
 
-      {/* ══════════════ ROADMAP ══════════════ */}
+      {/* ══ ROADMAP ══ */}
       {tab === "roadmap" && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Map className="h-4 w-4" /> Programme Roadmap</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Map className="h-4 w-4" /> Programme Roadmap</CardTitle></CardHeader>
           <CardContent className="p-5">
-            {cycle.roadmap ? (
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                {cycle.roadmap}
-              </pre>
-            ) : (
-              <p className="text-sm text-muted">Your mentor hasn't written a roadmap yet. Check back soon.</p>
-            )}
+            {cycle.roadmap
+              ? <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{cycle.roadmap}</pre>
+              : <p className="text-sm text-muted">Your mentor hasn't written a roadmap yet.</p>}
           </CardContent>
         </Card>
       )}
 
-      {/* ══════════════ MODULES ══════════════ */}
+      {/* ══ MODULES ══ */}
       {tab === "modules" && (
         <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
           {/* Sidebar */}
@@ -267,33 +234,30 @@ export default function StudentLmsPage() {
             <CardContent className="p-2">
               <ul>
                 {published.map((m) => {
-                  const isLocked = m.status === "locked";
+                  const isLocked = m.status === "locked" && !m.is_completed;
                   const isSelected = m.id === selectedId;
-                  const hasPendingAssignment = m.assignment_prompt && !m.assignment;
+                  const hasPending = m.assignment_prompt && !m.assignment;
                   return (
                     <li key={m.id}>
                       <button disabled={isLocked} onClick={() => setSelectedId(m.id)}
-                        className={cn(
-                          "flex w-full items-start gap-2.5 rounded-sm px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                          isSelected ? "bg-ink text-paper" : "hover:bg-ink/[0.05]"
-                        )}>
-                        <span className="mt-0.5 shrink-0"><StatusIcon status={m.status} /></span>
+                        className={cn("flex w-full items-start gap-2.5 rounded-sm px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                          isSelected ? "bg-ink text-paper" : "hover:bg-ink/[0.05]")}>
+                        <span className="mt-0.5 shrink-0"><StatusIcon status={m.status} isCompleted={m.is_completed} /></span>
                         <span className="flex-1 min-w-0">
-                          <span className={cn("block text-[11px]", isSelected ? "text-paper/70" : "text-muted")}>
-                            Week {m.week_number}
-                          </span>
+                          <span className={cn("block text-[11px]", isSelected ? "text-paper/70" : "text-muted")}>Week {m.week_number}</span>
                           <span className="block font-medium leading-snug">{m.title}</span>
+                          {m.is_completed && (
+                            <span className="flex items-center gap-1 text-[10px] text-success mt-0.5">
+                              <Flag className="h-2.5 w-2.5" /> Ended by mentor
+                            </span>
+                          )}
                         </span>
-                        {hasPendingAssignment && !isSelected && (
-                          <span className="mt-1 h-2 w-2 rounded-full bg-accent shrink-0" title="Assignment pending" />
-                        )}
+                        {hasPending && !isSelected && <span className="mt-1 h-2 w-2 rounded-full bg-accent shrink-0" title="Assignment pending" />}
                       </button>
                     </li>
                   );
                 })}
-                {published.length === 0 && (
-                  <li className="px-3 py-4 text-xs text-muted">No modules published yet.</li>
-                )}
+                {published.length === 0 && <li className="px-3 py-4 text-xs text-muted">No modules published yet.</li>}
               </ul>
             </CardContent>
           </Card>
@@ -305,22 +269,16 @@ export default function StudentLmsPage() {
               <Card>
                 <CardHeader>
                   <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <Badge tone={
-                      activeModule.status === "completed" ? "success"
-                        : activeModule.status === "active" ? "accent" : "neutral"
-                    }>
-                      Week {activeModule.week_number} · {activeModule.status}
-                    </Badge>
-                    {activeModule.live_class_url && (
-                      <Badge tone="accent" className="flex items-center gap-1">
-                        <Video className="h-3 w-3" /> Live session available
+                    {activeModule.is_completed ? (
+                      <Badge tone="success" className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Completed by mentor</Badge>
+                    ) : (
+                      <Badge tone={activeModule.status === "active" ? "accent" : "neutral"}>
+                        Week {activeModule.week_number} · {activeModule.status}
                       </Badge>
                     )}
-                    {activeModule.recording_url && (
-                      <Badge tone="neutral" className="flex items-center gap-1">
-                        <PlayCircle className="h-3 w-3" /> Recording available
-                      </Badge>
-                    )}
+                    {activeModule.live_class_url && <Badge tone="accent" className="flex items-center gap-1"><Video className="h-3 w-3" /> Live available</Badge>}
+                    {activeModule.recording_url && <Badge tone="neutral" className="flex items-center gap-1"><PlayCircle className="h-3 w-3" /> Recording</Badge>}
+                    {activeModule.files.length > 0 && <Badge tone="neutral" className="flex items-center gap-1"><Download className="h-3 w-3" /> {activeModule.files.length} file{activeModule.files.length > 1 ? "s" : ""}</Badge>}
                   </div>
                   <CardTitle>{activeModule.title}</CardTitle>
                 </CardHeader>
@@ -332,17 +290,14 @@ export default function StudentLmsPage() {
                       <ul className="space-y-1.5 text-sm">
                         {activeModule.objectives.split("\n").filter(Boolean).map((o, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                            {o}
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />{o}
                           </li>
                         ))}
                       </ul>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted">No objectives set yet.</p>
-                  )}
+                  ) : <p className="text-sm text-muted">No objectives set yet.</p>}
 
-                  {/* Live class button — internal route */}
+                  {/* Live class */}
                   {activeModule.live_class_url && (
                     <div className="rounded-sm border border-accent/30 bg-accent/[0.04] p-4 flex items-center justify-between gap-4">
                       <div>
@@ -350,9 +305,7 @@ export default function StudentLmsPage() {
                         <p className="text-xs text-muted mt-0.5">Click to join the session with your mentor.</p>
                       </div>
                       <a href={`/video-class/${cycleId}?week=${activeModule.week_number}`}>
-                        <Button className="gap-2 shrink-0">
-                          <Video className="h-4 w-4" /> Join Live Class
-                        </Button>
+                        <Button className="gap-2 shrink-0"><Video className="h-4 w-4" /> Join Live Class</Button>
                       </a>
                     </div>
                   )}
@@ -365,16 +318,12 @@ export default function StudentLmsPage() {
                           <PlayCircle className="h-4 w-4 text-accent" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium">
-                            {activeModule.recording_title || `Week ${activeModule.week_number} Recording`}
-                          </p>
+                          <p className="text-sm font-medium">{activeModule.recording_title || `Week ${activeModule.week_number} Recording`}</p>
                           <p className="text-xs text-muted">Session recording</p>
                         </div>
                       </div>
                       <a href={activeModule.recording_url} target="_blank" rel="noopener noreferrer">
-                        <Button size="sm" variant="outline">
-                          Watch <ExternalLink className="h-3 w-3" />
-                        </Button>
+                        <Button size="sm" variant="outline">Watch <ExternalLink className="h-3 w-3" /></Button>
                       </a>
                     </div>
                   )}
@@ -384,22 +333,13 @@ export default function StudentLmsPage() {
               {/* Learning resources */}
               {activeModule.learning_resources.length > 0 && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Link2 className="h-4 w-4" /> Learning Resources
-                    </CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle className="flex items-center gap-2"><Link2 className="h-4 w-4" /> Learning Resources</CardTitle></CardHeader>
                   <CardContent className="divide-y divide-line p-0">
                     {activeModule.learning_resources.map((r, i) => (
                       <div key={i} className="flex items-center justify-between px-5 py-3 text-sm">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-3.5 w-3.5 text-muted shrink-0" />
-                          <p className="font-medium">{r.label}</p>
-                        </div>
+                        <div className="flex items-center gap-2"><FileText className="h-3.5 w-3.5 text-muted shrink-0" /><p className="font-medium">{r.label}</p></div>
                         <a href={r.url} target="_blank" rel="noopener noreferrer">
-                          <Button variant="outline" size="sm" className="gap-1.5">
-                            Open <ExternalLink className="h-3 w-3" />
-                          </Button>
+                          <Button variant="outline" size="sm" className="gap-1.5">Open <ExternalLink className="h-3 w-3" /></Button>
                         </a>
                       </div>
                     ))}
@@ -407,17 +347,40 @@ export default function StudentLmsPage() {
                 </Card>
               )}
 
-              {/* Assignment — only shown if prompt is set */}
+              {/* Uploaded files for this week */}
+              {activeModule.files.length > 0 && (
+                <Card>
+                  <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="h-4 w-4" /> Week Materials</CardTitle></CardHeader>
+                  <CardContent className="divide-y divide-line p-0">
+                    {activeModule.files.map((f) => (
+                      <div key={f.id} className="flex items-center justify-between px-5 py-3 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-3.5 w-3.5 text-muted shrink-0" />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{f.original_name}</p>
+                            {f.size_bytes && <p className="text-xs text-muted">{formatBytes(f.size_bytes)}</p>}
+                          </div>
+                        </div>
+                        {f.is_downloadable && (
+                          <a href={`/api/lms/files/${f.storage_key}`} download={f.original_name}>
+                            <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
+                              <Download className="h-3.5 w-3.5" /> Download
+                            </Button>
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Assignment */}
               {activeModule.assignment_prompt && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="flex items-center gap-2">
-                        <ClipboardList className="h-4 w-4" /> Assignment
-                      </span>
-                      {!activeModule.assignment && (
-                        <Badge tone="accent">Submission required</Badge>
-                      )}
+                      <span className="flex items-center gap-2"><ClipboardList className="h-4 w-4" /> Assignment</span>
+                      {!activeModule.assignment && <Badge tone="accent">Submission required</Badge>}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-5 space-y-4">
@@ -435,19 +398,14 @@ export default function StudentLmsPage() {
         </div>
       )}
 
-      {/* ══════════════ RECORDINGS ══════════════ */}
+      {/* ══ RECORDINGS ══ */}
       {tab === "recordings" && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PlayCircle className="h-4 w-4" /> Session Recordings
-            </CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><PlayCircle className="h-4 w-4" /> Session Recordings</CardTitle></CardHeader>
           <CardContent className="p-5">
             {recordings.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-line py-16 text-sm text-muted">
-                <PlayCircle className="h-5 w-5" />
-                No recordings yet. Your mentor will add them after each session.
+                <PlayCircle className="h-5 w-5" /> No recordings yet.
               </div>
             ) : (
               <div className="space-y-3">
@@ -458,17 +416,12 @@ export default function StudentLmsPage() {
                         <PlayCircle className="h-5 w-5 text-accent" />
                       </div>
                       <div>
-                        <p className="font-medium text-sm">
-                          {m.recording_title || `Week ${m.week_number} — ${m.title}`}
-                        </p>
+                        <p className="font-medium text-sm">{m.recording_title || `Week ${m.week_number} — ${m.title}`}</p>
                         <p className="text-xs text-muted">Week {m.week_number}</p>
                       </div>
                     </div>
                     <a href={m.recording_url!} target="_blank" rel="noopener noreferrer">
-                      <Button size="sm" className="gap-1.5">
-                        <PlayCircle className="h-3.5 w-3.5" /> Watch
-                        <ExternalLink className="h-3 w-3" />
-                      </Button>
+                      <Button size="sm" className="gap-1.5"><PlayCircle className="h-3.5 w-3.5" /> Watch <ExternalLink className="h-3 w-3" /></Button>
                     </a>
                   </div>
                 ))}
@@ -478,7 +431,7 @@ export default function StudentLmsPage() {
         </Card>
       )}
 
-      {/* ══════════════ ASSIGNMENTS ══════════════ */}
+      {/* ══ ASSIGNMENTS ══ */}
       {tab === "assignments" && (
         <div className="space-y-4">
           {assignments.length === 0 ? (
@@ -506,10 +459,7 @@ export default function StudentLmsPage() {
                       <div>
                         <p className="font-medium text-success">{m.assignment.submitted_file_name}</p>
                         {m.assignment.grade != null && (
-                          <p className="text-xs text-muted mt-0.5">
-                            <strong>{m.assignment.grade}/100</strong>
-                            {m.assignment.feedback ? ` — ${m.assignment.feedback}` : ""}
-                          </p>
+                          <p className="text-xs text-muted mt-0.5"><strong>{m.assignment.grade}/100</strong>{m.assignment.feedback ? ` — ${m.assignment.feedback}` : ""}</p>
                         )}
                       </div>
                     </div>
@@ -521,6 +471,53 @@ export default function StudentLmsPage() {
             ))
           )}
         </div>
+      )}
+
+      {/* ══ DOWNLOADS ══ */}
+      {tab === "downloads" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Download className="h-4 w-4" /> Downloads</CardTitle>
+          </CardHeader>
+          <CardContent className="p-5">
+            <p className="mb-4 text-sm text-muted">
+              Files uploaded by your mentor for each module. Downloads are portal-only — files stay within AlumniLink and cannot be accessed externally.
+            </p>
+            {allFiles.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-line py-16 text-sm text-muted">
+                <FolderOpen className="h-5 w-5" /> No files uploaded yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-line">
+                {allFiles.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-ink/[0.06] shrink-0">
+                        <FileText className="h-4 w-4 text-muted" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{f.original_name}</p>
+                        <p className="text-xs text-muted">
+                          Week {f.week_number} — {f.module_title}
+                          {f.size_bytes ? ` · ${formatBytes(f.size_bytes)}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    {f.is_downloadable ? (
+                      <a href={`/api/lms/files/${f.storage_key}`} download={f.original_name} className="shrink-0 ml-4">
+                        <Button size="sm" className="gap-1.5">
+                          <Download className="h-3.5 w-3.5" /> Download
+                        </Button>
+                      </a>
+                    ) : (
+                      <Badge tone="neutral" className="shrink-0 ml-4">View only</Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

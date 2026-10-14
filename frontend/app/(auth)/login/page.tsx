@@ -17,7 +17,7 @@ import type { Role } from "@/lib/types";
 
 const ROLE_HOME: Record<Role, string> = {
   student: "/student/dashboard",
-  senior:  "/senior/dashboard",
+  senior:  "/student/senior/dashboard",
   mentor:  "/alumni/dashboard",
   admin:   "/admin/dashboard",
 };
@@ -113,7 +113,15 @@ export default function LoginPage() {
     });
     const data = await res.json();
     if (!res.ok) { setServerError(data.error ?? "Something went wrong."); return; }
-    afterAuth(data.user.role as Role);
+
+    const role: Role = data.user.role as Role;
+    // Students and seniors go through onboarding to capture their year
+    if (role === "student" || role === "senior") {
+      router.push("/onboarding");
+      router.refresh();
+    } else {
+      afterAuth(role);
+    }
   };
 
   /**

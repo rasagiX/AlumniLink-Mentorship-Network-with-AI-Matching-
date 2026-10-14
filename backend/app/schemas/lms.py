@@ -14,6 +14,22 @@ class LearningResource(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Module file (uploaded PDFs)
+# ---------------------------------------------------------------------------
+
+class ModuleFileOut(BaseModel):
+    id: str
+    module_id: str
+    original_name: str
+    storage_key: str
+    size_bytes: Optional[int]
+    is_downloadable: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
 # LMS Module
 # ---------------------------------------------------------------------------
 
@@ -38,6 +54,7 @@ class LMSModuleUpdate(BaseModel):
     recording_url: Optional[str] = None
     recording_title: Optional[str] = None
     is_published: Optional[bool] = None
+    is_completed: Optional[bool] = None
 
 
 class LMSModuleOut(BaseModel):
@@ -52,8 +69,10 @@ class LMSModuleOut(BaseModel):
     recording_url: Optional[str]
     recording_title: Optional[str]
     is_published: bool
+    is_completed: bool = False
     status: Literal["locked", "active", "completed"]
     assignment: Optional["AssignmentOut"] = None
+    files: List[ModuleFileOut] = []
 
     model_config = {"from_attributes": True}
 

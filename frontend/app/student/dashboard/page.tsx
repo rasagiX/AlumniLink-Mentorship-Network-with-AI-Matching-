@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Search, UserRoundPlus, Clock, CheckCircle2, XCircle, BookOpenCheck, ArrowRight } from "lucide-react";
+import { Search, UserRoundPlus, Clock, CheckCircle2, XCircle, BookOpenCheck, ArrowRight, GraduationCap } from "lucide-react";
 import { PageHeader } from "@/components/portal-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ function StatusBadge({ status }: { status: MentorRequest["status"] }) {
 
 export default function StudentDashboard() {
   const [name, setName] = React.useState("Student");
+  const [yearSet, setYearSet] = React.useState<boolean | null>(null);
   const [requests, setRequests] = React.useState<MentorRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -51,6 +52,14 @@ export default function StudentDashboard() {
       .then((r) => r.json())
       .then((d) => d.user?.name && setName(d.user.name))
       .catch(() => undefined);
+  }, []);
+
+  // Check if the user has set their year yet
+  React.useEffect(() => {
+    fetch("/api/profile/me")
+      .then((r) => r.json())
+      .then((d) => setYearSet(!!d.year))
+      .catch(() => setYearSet(true)); // don't block on error
   }, []);
 
   React.useEffect(() => {
@@ -75,6 +84,27 @@ export default function StudentDashboard() {
         title={`Welcome back, ${name}`}
         description="Track your mentorship requests and active programme."
       />
+
+      {/* ── Year not set nudge ── */}
+      {yearSet === false && (
+        <Card className="mb-6 border-accent/30 bg-accent/[0.04]">
+          <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <GraduationCap className="h-5 w-5 text-accent mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-medium">Set your academic year</p>
+                <p className="text-xs text-muted mt-0.5">
+                  Tell us which year you're in so we can show you the right seniors and mentors.
+                  Students in year 3+ are automatically promoted to Senior status.
+                </p>
+              </div>
+            </div>
+            <Button asChild size="sm" className="shrink-0">
+              <Link href="/onboarding">Set my year <ArrowRight className="h-3.5 w-3.5" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Active cycle banner ── */}
       {acceptedRequest && (

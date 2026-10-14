@@ -21,8 +21,6 @@ Student:
 """
 
 import json
-import re
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -33,9 +31,10 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_role
 from app.core.config import settings
+from app.core.storage import make_storage_key, storage
 from app.db.session import get_db
 from app.models.mentor import Mentor
-from app.models.mentorship_cycle import Assignment, LMSModule, MentorshipCycle
+from app.models.mentorship_cycle import Assignment, LMSModule, MentorshipCycle, ModuleFile
 from app.models.user import User
 from app.schemas.lms import (
     AdvanceWeekOut,
@@ -48,11 +47,11 @@ from app.schemas.lms import (
     LMSModuleOut,
     LMSModuleUpdate,
     MentorshipCycleOut,
+    ModuleFileOut,
     RecordingUpdate,
 )
 
 router = APIRouter(prefix="/lms", tags=["lms"])
-MATERIALS_DIR = Path(settings.UPLOAD_DIR) / "materials"
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +87,14 @@ def _build_module_out(
     module: LMSModule,
     current_week: int,
     assignment: Optional[Assignment] = None,
+    files: Optional[list] = None,
 ) -> LMSModuleOut:
+    # is_completed overrides the week-based status
+    if module.is_completed:
+        computed_status = "completed"
+    else:
+        computed_status = _module_status(module.week_number, current_week)
+
     return LMSModuleOut(
         id=module.id,
         cycle_id=module.cycle_id,
@@ -101,8 +107,10 @@ def _build_module_out(
         recording_url=module.recording_url,
         recording_title=module.recording_title,
         is_published=module.is_published,
-        status=_module_status(module.week_number, current_week),
+        is_completed=module.is_completed,
+        status=computed_status,
         assignment=AssignmentOut.model_validate(assignment) if assignment else None,
+        files=[ModuleFileOut.model_validate(f) for f in (files or [])],
     )
 
 
@@ -126,7 +134,8 @@ def _build_cycle_out(
                 .filter(Assignment.module_id == m.id, Assignment.student_id == student_id)
                 .first()
             )
-        module_outs.append(_build_module_out(m, cycle.current_week, assignment))
+        files = db.query(ModuleFile).filter(ModuleFile.module_id == m.id).all()
+        module_outs.append(_build_module_out(m, cycle.current_week, assignment, files))
 
     return MentorshipCycleOut(
         id=cycle.id,
@@ -375,36 +384,153 @@ async def upload_module_material(
     db: Session = Depends(get_db),
     mentor_user: User = Depends(require_role("mentor")),
 ):
-    """Store a mentor PDF and return a student-safe download URL."""
+    """Upload a PDF material for a module. Stored in R2 (or local fallback)."""
     mentor = _get_mentor_or_404(db, mentor_user)
-    _get_mentor_cycle_or_404(db, cycle_id, mentor)
+    cycle = _get_mentor_cycle_or_404(db, cycle_id, mentor)
     _get_module_or_404(db, module_id, cycle_id)
 
     safe_name = Path(file.filename or "material.pdf").name
     if file.content_type != "application/pdf" and not safe_name.lower().endswith(".pdf"):
         raise HTTPException(status_code=415, detail="Only PDF files are accepted.")
+
     content = await file.read()
-    if not content.startswith(b"%PDF-"):
-        raise HTTPException(status_code=415, detail="The selected file is not a valid PDF.")
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="PDF files must be 20 MB or smaller.")
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF must be 50 MB or smaller.")
 
-    MATERIALS_DIR.mkdir(parents=True, exist_ok=True)
-    stored_name = f"{uuid.uuid4().hex}_{re.sub(r'[^A-Za-z0-9._-]', '_', safe_name)}"
-    (MATERIALS_DIR / stored_name).write_bytes(content)
-    return {"label": safe_name, "url": f"/api/lms/materials/{stored_name}"}
+    key = make_storage_key(cycle_id, module_id, safe_name)
+    storage.upload_sync(content, key, "application/pdf")
+
+    mf = ModuleFile(
+        module_id=module_id,
+        cycle_id=cycle_id,
+        uploader_id=mentor_user.id,
+        original_name=safe_name,
+        storage_key=key,
+        content_type="application/pdf",
+        size_bytes=len(content),
+        is_downloadable=True,
+    )
+    db.add(mf)
+    db.commit()
+    db.refresh(mf)
+    return ModuleFileOut.model_validate(mf)
 
 
-@router.get("/materials/{stored_name}")
-def download_module_material(
-    stored_name: str,
-    _user: User = Depends(get_current_user),
+@router.delete("/files/{file_id}", status_code=204)
+def delete_module_file(
+    file_id: str,
+    db: Session = Depends(get_db),
+    mentor_user: User = Depends(require_role("mentor")),
 ):
-    """Serve a material to an authenticated portal user."""
-    path = MATERIALS_DIR / Path(stored_name).name
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Material not found.")
-    return FileResponse(path, media_type="application/pdf", filename=path.name.split("_", 1)[-1])
+    """Delete a file from a module."""
+    mentor = _get_mentor_or_404(db, mentor_user)
+    mf = db.query(ModuleFile).filter(ModuleFile.id == file_id).first()
+    if not mf:
+        raise HTTPException(status_code=404, detail="File not found.")
+    # Check ownership via cycle
+    cycle = db.query(MentorshipCycle).filter(
+        MentorshipCycle.id == mf.cycle_id, MentorshipCycle.mentor_id == mentor.id
+    ).first()
+    if not cycle:
+        raise HTTPException(status_code=403, detail="Not your file.")
+    try:
+        storage.delete_sync(mf.storage_key)
+    except Exception:
+        pass  # don't fail if R2 delete errors; row is removed anyway
+    db.delete(mf)
+    db.commit()
+
+
+@router.get("/files/{storage_key:path}")
+def download_module_file(
+    storage_key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Serve a file to portal users.
+    - Generates a presigned R2 URL (or serves local file).
+    - The file is NOT publicly accessible without authentication.
+    - Mentors always have access; students only if enrolled in the cycle.
+    """
+    mf = db.query(ModuleFile).filter(ModuleFile.storage_key == storage_key).first()
+    if not mf:
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    # Access check
+    if current_user.role == "mentor":
+        mentor = db.query(Mentor).filter(Mentor.user_id == current_user.id).first()
+        if not mentor:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        cycle = db.query(MentorshipCycle).filter(
+            MentorshipCycle.id == mf.cycle_id, MentorshipCycle.mentor_id == mentor.id
+        ).first()
+        if not cycle:
+            raise HTTPException(status_code=403, detail="Not your cycle.")
+    else:
+        # student / senior
+        cycle = db.query(MentorshipCycle).filter(
+            MentorshipCycle.id == mf.cycle_id, MentorshipCycle.student_id == current_user.id
+        ).first()
+        if not cycle:
+            raise HTTPException(status_code=403, detail="Not enrolled in this cycle.")
+
+    from fastapi.responses import RedirectResponse
+    url = storage.download_url(mf.storage_key, mf.original_name)
+
+    if settings.r2_enabled:
+        # R2: redirect to presigned URL (browser downloads from R2 directly)
+        return RedirectResponse(url=url, status_code=302)
+    else:
+        # Local: serve the file directly
+        local_path = Path(settings.UPLOAD_DIR) / "r2_local" / storage_key
+        if not local_path.is_file():
+            raise HTTPException(status_code=404, detail="File not found on disk.")
+        return FileResponse(
+            local_path,
+            media_type="application/pdf",
+            filename=mf.original_name,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Mentor — mark module as completed / uncompleted
+# ---------------------------------------------------------------------------
+
+@router.patch("/cycles/{cycle_id}/modules/{module_id}/complete", response_model=LMSModuleOut)
+def complete_module(
+    cycle_id: str,
+    module_id: str,
+    db: Session = Depends(get_db),
+    mentor_user: User = Depends(require_role("mentor")),
+):
+    """Mentor marks a module as completed. Immediately reflected on student portal."""
+    mentor = _get_mentor_or_404(db, mentor_user)
+    cycle = _get_mentor_cycle_or_404(db, cycle_id, mentor)
+    module = _get_module_or_404(db, module_id, cycle_id)
+    module.is_completed = True
+    db.commit()
+    db.refresh(module)
+    files = db.query(ModuleFile).filter(ModuleFile.module_id == module_id).all()
+    return _build_module_out(module, cycle.current_week, None, files)
+
+
+@router.patch("/cycles/{cycle_id}/modules/{module_id}/reopen", response_model=LMSModuleOut)
+def reopen_module(
+    cycle_id: str,
+    module_id: str,
+    db: Session = Depends(get_db),
+    mentor_user: User = Depends(require_role("mentor")),
+):
+    """Mentor reopens a previously completed module."""
+    mentor = _get_mentor_or_404(db, mentor_user)
+    cycle = _get_mentor_cycle_or_404(db, cycle_id, mentor)
+    module = _get_module_or_404(db, module_id, cycle_id)
+    module.is_completed = False
+    db.commit()
+    db.refresh(module)
+    files = db.query(ModuleFile).filter(ModuleFile.module_id == module_id).all()
+    return _build_module_out(module, cycle.current_week, None, files)
 
 @router.get("/modules/{module_id}/assignment", response_model=Optional[AssignmentOut])
 def get_module_assignment(

@@ -58,10 +58,10 @@ const AVATAR_COLORS = [
 // Role labels and portal back-links
 // ---------------------------------------------------------------------------
 const ROLE_META: Record<Role, { label: string; back: string; tone: "student" | "mentor" | "admin" }> = {
-  student:  { label: "Student Portal",         back: "/student/dashboard",  tone: "student" },
-  senior:   { label: "Senior Portal",          back: "/senior/dashboard",   tone: "student" },
-  mentor:   { label: "Alumni Mentor Portal",   back: "/alumni/dashboard",   tone: "mentor"  },
-  admin:    { label: "Admin Console",          back: "/admin/dashboard",    tone: "admin"   },
+  student:  { label: "Student Portal",         back: "/student/dashboard",        tone: "student" },
+  senior:   { label: "Senior Portal",          back: "/student/senior/dashboard", tone: "student" },
+  mentor:   { label: "Alumni Mentor Portal",   back: "/alumni/dashboard",         tone: "mentor"  },
+  admin:    { label: "Admin Console",          back: "/admin/dashboard",          tone: "admin"   },
 };
 
 const YEAR_LABELS: Record<number, string> = {
@@ -240,6 +240,13 @@ export default function ProfileEditPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-5 space-y-4">
+                {/* Auto-promote info */}
+                <div className="rounded-sm border border-line bg-surface px-4 py-3 text-xs text-muted">
+                  <strong className="text-ink">Year determines your role:</strong>{" "}
+                  Students in <strong>Year 3 or above</strong> are automatically promoted to{" "}
+                  <strong>Senior Student</strong> status, unlocking the ability to mentor juniors.
+                  Updating your year here will take effect immediately on next sign-in or page refresh.
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="year">Academic year</Label>
