@@ -58,10 +58,10 @@ const AVATAR_COLORS = [
 // Role labels and portal back-links
 // ---------------------------------------------------------------------------
 const ROLE_META: Record<Role, { label: string; back: string; tone: "student" | "mentor" | "admin" }> = {
-  student:  { label: "Student Portal",         back: "/student/dashboard",        tone: "student" },
-  senior:   { label: "Senior Portal",          back: "/student/senior/dashboard", tone: "student" },
-  mentor:   { label: "Alumni Mentor Portal",   back: "/alumni/dashboard",         tone: "mentor"  },
-  admin:    { label: "Admin Console",          back: "/admin/dashboard",          tone: "admin"   },
+  student:  { label: "Student Portal",       back: "/student/dashboard", tone: "student" },
+  senior:   { label: "Senior Student",       back: "/student/dashboard", tone: "student" },
+  mentor:   { label: "Alumni Mentor Portal", back: "/alumni/dashboard",  tone: "mentor"  },
+  admin:    { label: "Admin Console",        back: "/admin/dashboard",   tone: "admin"   },
 };
 
 const YEAR_LABELS: Record<number, string> = {

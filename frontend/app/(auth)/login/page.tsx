@@ -17,7 +17,7 @@ import type { Role } from "@/lib/types";
 
 const ROLE_HOME: Record<Role, string> = {
   student: "/student/dashboard",
-  senior:  "/student/senior/dashboard",
+  senior:  "/student/dashboard",   // seniors share the student portal
   mentor:  "/alumni/dashboard",
   admin:   "/admin/dashboard",
 };

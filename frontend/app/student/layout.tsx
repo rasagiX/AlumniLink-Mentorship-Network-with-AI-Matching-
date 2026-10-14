@@ -1,29 +1,39 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { LayoutDashboard, Users, BookOpenCheck, LifeBuoy, GraduationCap, UserCircle } from "lucide-react";
+import {
+  LayoutDashboard, Users, BookOpenCheck,
+  LifeBuoy, GraduationCap, UserCircle, CalendarCheck,
+} from "lucide-react";
 import { PortalShell, type NavItem } from "@/components/portal-shell";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth-token";
 import { getProfileForShell } from "@/lib/server/get-profile";
 
-const navItems: NavItem[] = [
-  { href: "/student/dashboard",  label: "Dashboard",         icon: <LayoutDashboard className="h-4 w-4" /> },
-  { href: "/student/directory",  label: "Mentor Directory",  icon: <Users className="h-4 w-4" /> },
-  { href: "/student/seniors",    label: "Seniors Directory", icon: <GraduationCap className="h-4 w-4" /> },
-  { href: "/student/lms",        label: "My Cohort (LMS)",   icon: <BookOpenCheck className="h-4 w-4" /> },
-  { href: "/student/support",    label: "Support",           icon: <LifeBuoy className="h-4 w-4" /> },
-  { href: "/profile/edit",       label: "Edit Profile",      icon: <UserCircle className="h-4 w-4" /> },
-];
-
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
   const token = cookies().get(COOKIE_NAME)?.value;
   const session = token ? await verifyToken(token) : null;
-  if (!session || session.role !== "student") redirect("/login");
+
+  // Both students and seniors use this portal
+  if (!session || (session.role !== "student" && session.role !== "senior")) {
+    redirect("/login");
+  }
 
   const profile = await getProfileForShell();
+  const isSenior = session.role === "senior";
+
+  const navItems: NavItem[] = [
+    { href: "/student/dashboard",  label: "Dashboard",         icon: <LayoutDashboard className="h-4 w-4" /> },
+    { href: "/student/directory",  label: "Alumni Mentors",    icon: <Users className="h-4 w-4" /> },
+    { href: "/student/seniors",    label: "Senior Directory",  icon: <GraduationCap className="h-4 w-4" /> },
+    { href: "/student/lms",        label: "My Cohort (LMS)",   icon: <BookOpenCheck className="h-4 w-4" /> },
+    // Seniors-only: manage inbound junior session requests
+    ...(isSenior ? [{ href: "/student/juniors", label: "My Juniors", icon: <CalendarCheck className="h-4 w-4" /> }] : []),
+    { href: "/student/support",    label: "Support",           icon: <LifeBuoy className="h-4 w-4" /> },
+    { href: "/profile/edit",       label: "Edit Profile",      icon: <UserCircle className="h-4 w-4" /> },
+  ];
 
   return (
     <PortalShell
-      role="student"
+      role={session.role}
       navItems={navItems}
       user={{
         name: session.name,

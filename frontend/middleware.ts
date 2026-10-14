@@ -4,7 +4,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth-token";
 
 const ROLE_HOME: Record<string, string> = {
   student: "/student/dashboard",
-  senior:  "/student/senior/dashboard",
+  senior:  "/student/dashboard",   // seniors live in the student portal
   mentor:  "/alumni/dashboard",
   admin:   "/admin/dashboard",
 };
@@ -12,7 +12,6 @@ const ROLE_HOME: Record<string, string> = {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Route groups that need auth
   const isStudentRoute = pathname === "/student" || pathname.startsWith("/student/");
   const isAlumniRoute  = pathname === "/alumni"  || pathname.startsWith("/alumni/");
   const isAdminRoute   = pathname === "/admin"   || pathname.startsWith("/admin/");
@@ -30,19 +29,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const role = session.role;
+  const { role } = session;
 
-  // /student/senior/* is the merged senior portal — accessible by seniors only
-  if (pathname.startsWith("/student/senior")) {
-    if (role !== "senior") {
-      return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // Regular /student/* — accessible by students only
+  // /student/* — both students and seniors share this portal
   if (isStudentRoute) {
-    if (role !== "student") {
+    if (role !== "student" && role !== "senior") {
       return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
     }
     return NextResponse.next();

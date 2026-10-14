@@ -18,7 +18,7 @@ const YEAR_LABELS: Record<number, string> = {
 
 const ROLE_HOME: Record<Role, string> = {
   student: "/student/dashboard",
-  senior:  "/student/senior/dashboard",
+  senior:  "/student/dashboard",   // seniors share the student portal
   mentor:  "/alumni/dashboard",
   admin:   "/admin/dashboard",
 };
@@ -169,7 +169,7 @@ export default function OnboardingPage() {
               ) : (
                 <>
                   Continue to{" "}
-                  {willBecomeSenior ? "Senior Portal" : "Student Portal"}
+                  {willBecomeSenior ? "Student Portal (Senior)" : "Student Portal"}
                   <ArrowRight className="h-3.5 w-3.5" />
                 </>
               )}
