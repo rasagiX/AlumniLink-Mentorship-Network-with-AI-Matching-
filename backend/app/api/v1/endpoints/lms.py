@@ -199,7 +199,8 @@ def list_mentor_cycles(
         .order_by(MentorshipCycle.started_at.desc())
         .all()
     )
-    return [_build_cycle_out(c, db) for c in cycles]
+    # Pass each cycle's student_id so assignments are included per cycle
+    return [_build_cycle_out(c, db, student_id=c.student_id) for c in cycles]
 
 
 @router.get("/cycles/{cycle_id}", response_model=MentorshipCycleOut)
@@ -210,7 +211,8 @@ def get_mentor_cycle(
 ):
     mentor = _get_mentor_or_404(db, mentor_user)
     cycle = _get_mentor_cycle_or_404(db, cycle_id, mentor)
-    return _build_cycle_out(cycle, db)
+    # Pass the cycle's student_id so assignments are included in the response
+    return _build_cycle_out(cycle, db, student_id=cycle.student_id)
 
 
 @router.patch("/cycles/{cycle_id}/roadmap", response_model=MentorshipCycleOut)
@@ -512,7 +514,8 @@ def complete_module(
     db.commit()
     db.refresh(module)
     files = db.query(ModuleFile).filter(ModuleFile.module_id == module_id).all()
-    return _build_module_out(module, cycle.current_week, None, files)
+    assignment = db.query(Assignment).filter(Assignment.module_id == module_id, Assignment.student_id == cycle.student_id).first()
+    return _build_module_out(module, cycle.current_week, assignment, files)
 
 
 @router.patch("/cycles/{cycle_id}/modules/{module_id}/reopen", response_model=LMSModuleOut)
@@ -530,7 +533,8 @@ def reopen_module(
     db.commit()
     db.refresh(module)
     files = db.query(ModuleFile).filter(ModuleFile.module_id == module_id).all()
-    return _build_module_out(module, cycle.current_week, None, files)
+    assignment = db.query(Assignment).filter(Assignment.module_id == module_id, Assignment.student_id == cycle.student_id).first()
+    return _build_module_out(module, cycle.current_week, assignment, files)
 
 @router.get("/modules/{module_id}/assignment", response_model=Optional[AssignmentOut])
 def get_module_assignment(
