@@ -594,7 +594,7 @@ def grade_assignment(
 @router.get("/my-cycles", response_model=List[MentorshipCycleOut])
 def list_student_cycles(
     db: Session = Depends(get_db),
-    student: User = Depends(require_role("student")),
+    student: User = Depends(require_role("student", "senior")),
 ):
     cycles = (
         db.query(MentorshipCycle)
@@ -609,7 +609,7 @@ def list_student_cycles(
 def get_student_cycle(
     cycle_id: str,
     db: Session = Depends(get_db),
-    student: User = Depends(require_role("student")),
+    student: User = Depends(require_role("student", "senior")),
 ):
     cycle = (
         db.query(MentorshipCycle)
@@ -626,12 +626,13 @@ def get_student_cycle(
     response_model=AssignmentOut,
     status_code=status.HTTP_201_CREATED,
 )
-def submit_assignment(
+async def submit_assignment(
     module_id: str,
-    payload: AssignmentSubmit,
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    student: User = Depends(require_role("student")),
+    student: User = Depends(require_role("student", "senior")),
 ):
+    """Student uploads their assignment PDF for a module."""
     module = db.query(LMSModule).filter(LMSModule.id == module_id).first()
     if not module:
         raise HTTPException(status_code=404, detail="Module not found.")
@@ -646,13 +647,32 @@ def submit_assignment(
     if not module.is_published:
         raise HTTPException(status_code=403, detail="This module is not yet published by the mentor.")
 
+    # Validate PDF
+    safe_name = Path(file.filename or "assignment.pdf").name
+    if not safe_name.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Only PDF files are accepted.")
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File must be 50 MB or smaller.")
+
+    # Store in R2 / local
+    key = make_storage_key(cycle.id, module_id, f"assignment_{student.id}_{safe_name}")
+    storage.upload_sync(content, key, "application/pdf")
+
     assignment = (
         db.query(Assignment)
         .filter(Assignment.module_id == module_id, Assignment.student_id == student.id)
         .first()
     )
     if assignment:
-        assignment.submitted_file_name = payload.submitted_file_name
+        # Delete old file if it exists
+        if assignment.storage_key:
+            try:
+                storage.delete_sync(assignment.storage_key)
+            except Exception:
+                pass
+        assignment.submitted_file_name = safe_name
+        assignment.storage_key = key
         assignment.grade = None
         assignment.feedback = None
         assignment.graded_at = None
@@ -660,10 +680,56 @@ def submit_assignment(
         assignment = Assignment(
             module_id=module_id,
             student_id=student.id,
-            submitted_file_name=payload.submitted_file_name,
+            submitted_file_name=safe_name,
+            storage_key=key,
         )
         db.add(assignment)
 
     db.commit()
     db.refresh(assignment)
     return AssignmentOut.model_validate(assignment)
+
+
+@router.get("/assignments/{assignment_id}/download")
+def download_assignment(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Mentor (or the submitting student) can download the submitted assignment file.
+    Redirects to a presigned R2 URL or serves from local disk.
+    """
+    assignment = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    if not assignment.storage_key:
+        raise HTTPException(status_code=404, detail="No file was uploaded for this assignment.")
+
+    # Access check: mentor who owns the cycle, or the student who submitted
+    if current_user.role in ("mentor",):
+        mentor = db.query(Mentor).filter(Mentor.user_id == current_user.id).first()
+        if not mentor:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        module = db.query(LMSModule).filter(LMSModule.id == assignment.module_id).first()
+        cycle = db.query(MentorshipCycle).filter(
+            MentorshipCycle.id == module.cycle_id, MentorshipCycle.mentor_id == mentor.id
+        ).first()
+        if not cycle:
+            raise HTTPException(status_code=403, detail="Not your cycle.")
+    else:
+        # student / senior: can only download their own
+        if assignment.student_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied.")
+
+    from fastapi.responses import RedirectResponse
+    url = storage.download_url(assignment.storage_key, assignment.submitted_file_name)
+
+    if settings.r2_enabled:
+        return RedirectResponse(url=url, status_code=302)
+    else:
+        local_path = Path(settings.UPLOAD_DIR) / "r2_local" / assignment.storage_key
+        if not local_path.is_file():
+            raise HTTPException(status_code=404, detail="File not found on disk.")
+        return FileResponse(local_path, media_type="application/pdf", filename=assignment.submitted_file_name)

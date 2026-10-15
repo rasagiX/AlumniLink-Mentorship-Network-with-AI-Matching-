@@ -10,7 +10,7 @@ import {
   AlertCircle, Plus, Trash2, ChevronRight, FileCheck2,
   Video, BookOpen, Map, Mic, Link2, Save,
   PlayCircle, X, UploadCloud, FileText, FolderOpen,
-  RotateCcw, Flag,
+  RotateCcw, Flag, Star, Download,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,7 @@ interface LearningResource { label: string; url: string }
 interface ModuleFile { id: string; original_name: string; storage_key: string; size_bytes: number | null; is_downloadable: boolean }
 interface AssignmentOut {
   id: string; submitted_file_name: string;
+  storage_key: string | null;
   grade: number | null; feedback: string | null;
   submitted_at: string; graded_at: string | null;
 }
@@ -72,8 +73,8 @@ const recordingSchema = z.object({
 type RecordingValues = z.infer<typeof recordingSchema>;
 
 const gradingSchema = z.object({
-  grade: z.coerce.number().min(0).max(100),
-  feedback: z.string().min(10, "At least 10 characters"),
+  grade: z.coerce.number().min(1, "Select at least 1 star").max(5),
+  feedback: z.string().min(1, "Add some feedback").max(2000),
 });
 type GradingValues = z.infer<typeof gradingSchema>;
 
@@ -597,25 +598,81 @@ export default function MentorLmsPage() {
                     <p className="text-sm text-muted">{cycle.student_name} hasn't submitted yet.</p>
                   ) : (
                     <form onSubmit={gradingForm.handleSubmit(onGrade)} className="space-y-4" noValidate>
-                      <div className="flex items-center gap-2 rounded-sm border border-line px-3 py-2 text-sm">
-                        <FileCheck2 className="h-4 w-4 text-success" />
-                        <span className="flex-1 font-medium">{activeModule.assignment.submitted_file_name}</span>
-                        {activeModule.assignment.grade != null && <Badge tone="success">Graded {activeModule.assignment.grade}/100</Badge>}
+                      {/* Submitted file — with download button */}
+                      <div className="flex items-center gap-2 rounded-sm border border-line px-3 py-2.5 text-sm">
+                        <FileCheck2 className="h-4 w-4 text-success shrink-0" />
+                        <span className="flex-1 font-medium truncate">{activeModule.assignment.submitted_file_name}</span>
+                        {activeModule.assignment.grade != null && (
+                          <Badge tone="success" className="shrink-0">
+                            {"★".repeat(activeModule.assignment.grade)}{"☆".repeat(5 - activeModule.assignment.grade)}
+                          </Badge>
+                        )}
+                        {activeModule.assignment.storage_key && (
+                          <a
+                            href={`/api/lms/assignments/${activeModule.assignment.id}/download`}
+                            download={activeModule.assignment.submitted_file_name}
+                            className="shrink-0"
+                          >
+                            <Button type="button" size="sm" variant="outline" className="gap-1.5">
+                              <Download className="h-3.5 w-3.5" /> Open File
+                            </Button>
+                          </a>
+                        )}
                       </div>
-                      <div className="grid gap-4 sm:grid-cols-[120px_1fr]">
-                        <div>
-                          <Label htmlFor="grade">Score (0–100)</Label>
-                          <Input id="grade" type="number" min={0} max={100} {...gradingForm.register("grade")} />
-                          {gradingForm.formState.errors.grade && <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.grade.message}</p>}
+
+                      {/* Star rating */}
+                      <div>
+                        <Label className="mb-2 block">Rating</Label>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => {
+                            const current = gradingForm.watch("grade") ?? 0;
+                            return (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => gradingForm.setValue("grade", star, { shouldValidate: true })}
+                                className="transition-transform hover:scale-110"
+                              >
+                                <Star
+                                  className={cn(
+                                    "h-7 w-7",
+                                    star <= current
+                                      ? "fill-yellow-400 text-yellow-400"
+                                      : "text-muted"
+                                  )}
+                                />
+                              </button>
+                            );
+                          })}
+                          {gradingForm.watch("grade") > 0 && (
+                            <span className="ml-2 self-center text-sm font-medium text-muted">
+                              {gradingForm.watch("grade")}/5
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <Label htmlFor="feedback">Feedback</Label>
-                          <Textarea id="feedback" rows={3} {...gradingForm.register("feedback")} />
-                          {gradingForm.formState.errors.feedback && <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.feedback.message}</p>}
-                        </div>
+                        {gradingForm.formState.errors.grade && (
+                          <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.grade.message}</p>
+                        )}
                       </div>
+
+                      {/* Feedback */}
+                      <div>
+                        <Label htmlFor="feedback">Feedback for student</Label>
+                        <Textarea
+                          id="feedback"
+                          rows={3}
+                          placeholder="Great work on the structure! Try to be more concise in the second section…"
+                          {...gradingForm.register("feedback")}
+                        />
+                        {gradingForm.formState.errors.feedback && (
+                          <p className="mt-1 text-xs text-danger">{gradingForm.formState.errors.feedback.message}</p>
+                        )}
+                      </div>
+
                       <Button type="submit" disabled={gradingForm.formState.isSubmitting}>
-                        {gradingForm.formState.isSubmitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : "Submit Grade"}
+                        {gradingForm.formState.isSubmitting
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                          : "Submit Grade"}
                       </Button>
                     </form>
                   )}

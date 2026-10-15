@@ -64,6 +64,8 @@ class Assignment(Base):
     module_id = Column(String, ForeignKey("lms_modules.id"), nullable=False, index=True)
     student_id = Column(String, nullable=False, index=True)
     submitted_file_name = Column(String, nullable=False)
+    # R2/local storage key for the actual uploaded file bytes
+    storage_key = Column(String, nullable=True)
     grade = Column(Integer, nullable=True)
     feedback = Column(Text, nullable=True)
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())

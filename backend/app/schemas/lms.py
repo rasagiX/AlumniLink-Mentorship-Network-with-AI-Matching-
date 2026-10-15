@@ -86,8 +86,8 @@ class AssignmentSubmit(BaseModel):
 
 
 class AssignmentGrade(BaseModel):
-    grade: int = Field(ge=0, le=100)
-    feedback: str = Field(min_length=5, max_length=2000)
+    grade: int = Field(ge=1, le=5, description="Star rating 1–5")
+    feedback: str = Field(min_length=1, max_length=2000)
 
 
 class AssignmentOut(BaseModel):
@@ -95,6 +95,7 @@ class AssignmentOut(BaseModel):
     module_id: str
     student_id: str
     submitted_file_name: str
+    storage_key: Optional[str] = None   # set when the file was actually uploaded
     grade: Optional[int]
     feedback: Optional[str]
     submitted_at: datetime

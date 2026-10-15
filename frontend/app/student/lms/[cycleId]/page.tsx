@@ -23,6 +23,7 @@ interface ModuleFile {
 }
 interface AssignmentOut {
   id: string; submitted_file_name: string;
+  storage_key: string | null;
   grade: number | null; feedback: string | null;
   submitted_at: string; graded_at: string | null;
 }
@@ -79,9 +80,12 @@ function AssignmentUpload({ module, onSubmitted }: { module: LMSModule; onSubmit
   const onSubmit = async () => {
     if (!file) { setError("Please select a file first."); return; }
     setSubmitting(true); setError(null);
+    // Send as multipart/form-data so the backend stores the actual bytes
+    const formData = new FormData();
+    formData.append("file", file, file.name);
     const res = await fetch(`/api/lms/modules/${module.id}/submit`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ submitted_file_name: file.name }),
+      method: "POST",
+      body: formData,   // no Content-Type header — browser sets it with boundary
     });
     const d = await res.json();
     setSubmitting(false);
@@ -96,7 +100,7 @@ function AssignmentUpload({ module, onSubmitted }: { module: LMSModule; onSubmit
         <div>
           <p className="font-medium text-success">{module.assignment.submitted_file_name} — submitted</p>
           {module.assignment.grade != null ? (
-            <p className="mt-0.5 text-xs text-muted">Grade: <strong>{module.assignment.grade}/100</strong>{module.assignment.feedback ? ` — ${module.assignment.feedback}` : ""}</p>
+            <p className="mt-0.5 text-xs text-muted">Grade: <strong>{"★".repeat(module.assignment.grade)}{"☆".repeat(5 - module.assignment.grade)} ({module.assignment.grade}/5)</strong>{module.assignment.feedback ? ` — ${module.assignment.feedback}` : ""}</p>
           ) : (
             <p className="mt-0.5 text-xs text-muted">Awaiting mentor review…</p>
           )}
@@ -446,7 +450,7 @@ export default function StudentLmsPage() {
                     <CardTitle className="text-base">Week {m.week_number} — {m.title}</CardTitle>
                     {m.assignment
                       ? m.assignment.grade != null
-                        ? <Badge tone="success">Graded {m.assignment.grade}/100</Badge>
+                        ? <Badge tone="success">{"★".repeat(m.assignment.grade)} ({m.assignment.grade}/5)</Badge>
                         : <Badge tone="accent">Submitted · awaiting grade</Badge>
                       : <Badge tone="neutral">Not submitted</Badge>}
                   </div>
@@ -459,7 +463,10 @@ export default function StudentLmsPage() {
                       <div>
                         <p className="font-medium text-success">{m.assignment.submitted_file_name}</p>
                         {m.assignment.grade != null && (
-                          <p className="text-xs text-muted mt-0.5"><strong>{m.assignment.grade}/100</strong>{m.assignment.feedback ? ` — ${m.assignment.feedback}` : ""}</p>
+                          <p className="text-xs text-muted mt-0.5">
+                            <strong>{"★".repeat(m.assignment.grade)}{"☆".repeat(5 - m.assignment.grade)} ({m.assignment.grade}/5)</strong>
+                            {m.assignment.feedback ? ` — ${m.assignment.feedback}` : ""}
+                          </p>
                         )}
                       </div>
                     </div>
