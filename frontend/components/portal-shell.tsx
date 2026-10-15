@@ -32,14 +32,12 @@ type BadgeTone = "student" | "mentor" | "admin";
 
 const ROLE_TONE: Record<Role, BadgeTone> = {
   student: "student",
-  senior:  "student",   // reuse student tone; label differentiates
   mentor:  "mentor",
   admin:   "admin",
 };
 
 const ROLE_LABEL: Record<Role, string> = {
   student: "Student Portal",
-  senior:  "Senior Portal",
   mentor:  "Alumni Mentor Portal",
   admin:   "Institutional Admin Console",
 };

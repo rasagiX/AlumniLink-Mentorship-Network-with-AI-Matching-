@@ -4,7 +4,6 @@ import { attachSessionCookie, FASTAPI_V1, type FastAPITokenResponse } from "@/li
 
 export async function POST(req: Request) {
   const body = await req.text();
-
   let upstream: Response;
   try {
     upstream = await fetch(`${FASTAPI_V1}/auth/login`, {
@@ -21,7 +20,6 @@ export async function POST(req: Request) {
   }
 
   const data = await upstream.json().catch(() => null);
-
   if (!upstream.ok) {
     return NextResponse.json({ error: extractFastAPIError(data) }, { status: upstream.status });
   }

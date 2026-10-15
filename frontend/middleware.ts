@@ -4,7 +4,6 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth-token";
 
 const ROLE_HOME: Record<string, string> = {
   student: "/student/dashboard",
-  senior:  "/student/dashboard",   // seniors live in the student portal
   mentor:  "/alumni/dashboard",
   admin:   "/admin/dashboard",
 };
@@ -31,27 +30,16 @@ export async function middleware(req: NextRequest) {
 
   const { role } = session;
 
-  // /student/* — both students and seniors share this portal
   if (isStudentRoute) {
-    if (role !== "student" && role !== "senior") {
-      return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
-    }
+    if (role !== "student") return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
     return NextResponse.next();
   }
-
-  // /alumni/* — mentor only
   if (isAlumniRoute) {
-    if (role !== "mentor") {
-      return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
-    }
+    if (role !== "mentor") return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
     return NextResponse.next();
   }
-
-  // /admin/* — admin only
   if (isAdminRoute) {
-    if (role !== "admin") {
-      return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
-    }
+    if (role !== "admin") return NextResponse.redirect(new URL(ROLE_HOME[role] ?? "/login", req.url));
     return NextResponse.next();
   }
 

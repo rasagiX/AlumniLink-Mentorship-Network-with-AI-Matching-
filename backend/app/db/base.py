@@ -5,5 +5,5 @@ from app.db.base_class import Base  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.mentor import Mentor  # noqa: F401
 from app.models.mentorship_request import MentorshipRequest  # noqa: F401
-from app.models.mentorship_cycle import MentorshipCycle, LMSModule, Assignment, SupportTicket, SessionBooking, ModuleFile  # noqa: F401
+from app.models.mentorship_cycle import MentorshipCycle, LMSModule, Assignment, SupportTicket, SessionBooking, ModuleFile, AlumniApplication  # noqa: F401
 from app.api.v1.endpoints.peer_sessions import PeerSession  # noqa: F401 — registers table with metadata

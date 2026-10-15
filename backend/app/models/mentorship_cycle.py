@@ -74,7 +74,6 @@ class Assignment(Base):
 
 class SupportTicket(Base):
     """Support request from student or mentor, routed to admin."""
-
     __tablename__ = "support_tickets"
 
     id = Column(String, primary_key=True, default=_uuid)
@@ -128,4 +127,27 @@ class ModuleFile(Base):
     size_bytes = Column(Integer, nullable=True)
     # If True the student sees a Download button; if False they can only view inline
     is_downloadable = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AlumniApplication(Base):
+    """
+    Pending alumni registration request — submitted by the alumni themselves.
+    Admin reviews and either approves (creating the User + Mentor rows) or rejects.
+    """
+
+    __tablename__ = "alumni_applications"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False, index=True)
+    # bcrypt hash stored immediately so the password is ready if approved
+    password_hash = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    company = Column(String, nullable=True)
+    domain = Column(String, nullable=True)
+    linkedin_url = Column(String, nullable=True)
+    # "pending" | "approved" | "rejected"
+    status = Column(String, nullable=False, default="pending")
+    rejection_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

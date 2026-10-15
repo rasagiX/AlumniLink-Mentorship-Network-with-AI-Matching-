@@ -2,14 +2,26 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-Role = Literal["student", "senior", "mentor", "admin"]
+Role = Literal["student", "mentor", "admin"]
 
 
 class UserCreate(BaseModel):
     name: str = Field(min_length=2)
     email: EmailStr
     password: str = Field(min_length=8)
-    role: Role
+    role: Literal["student", "mentor"] = "student"
+
+
+class AlumniRegisterRequest(BaseModel):
+    """Alumni submit this — creates a pending approval request, NOT an account yet."""
+    name: str = Field(min_length=2)
+    email: EmailStr
+    password: str = Field(min_length=8)
+    # Optional professional info shown to admin for review
+    title: Optional[str] = Field(default=None, max_length=200)
+    company: Optional[str] = Field(default=None, max_length=200)
+    domain: Optional[str] = Field(default=None, max_length=100)
+    linkedin_url: Optional[str] = Field(default=None, max_length=300)
 
 
 class UserLogin(BaseModel):
