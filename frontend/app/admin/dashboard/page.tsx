@@ -1,132 +1,166 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import {
-  Users, GraduationCap, RefreshCw, Award, AlertTriangle, Wallet, ArrowRight, Users2, Landmark, ShieldCheck,
+  Users, GraduationCap, RefreshCw, AlertTriangle, Loader2,
+  ArrowRight, Users2, UserCheck, LifeBuoy, Clock,
 } from "lucide-react";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from "recharts";
 import { PageHeader } from "@/components/portal-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ADMIN_KPIS, CAPACITY_TREND, DOMAIN_DISTRIBUTION } from "@/lib/mock-data";
-import { formatCurrency } from "@/lib/utils";
 
-interface KpiCard {
-  key: keyof typeof ADMIN_KPIS;
-  label: string;
-  icon: typeof GraduationCap;
-  money?: boolean;
+interface Stats {
+  totalStudents: number;
+  totalMentors: number;
+  activeCycles: number;
+  pendingRequests: number;
+  pendingAlumni: number;
 }
 
-const KPI_CARDS: KpiCard[] = [
-  { key: "totalStudents", label: "Students", icon: GraduationCap },
-  { key: "totalMentors", label: "Mentors", icon: Users },
-  { key: "activeCycles", label: "Active Cycles", icon: RefreshCw },
-  { key: "completedCohorts", label: "Completed Cohorts", icon: Award },
-  { key: "flaggedInactivity", label: "Flagged Inactivity", icon: AlertTriangle },
-  { key: "accruedEscrow", label: "Accrued Escrow", icon: Wallet, money: true },
-];
-
 const QUICK_LINKS = [
-  { href: "/admin/pairs", label: "Pairings Monitor", icon: Users2 },
-  { href: "/admin/payroll", label: "Payroll Console", icon: Landmark },
-  { href: "/admin/accreditation", label: "Accreditation Queue", icon: ShieldCheck },
-  { href: "/admin/disputes", label: "Dispute Resolution", icon: AlertTriangle },
+  { href: "/admin/pairs",               label: "Pairings Monitor",    icon: Users2,      desc: "Active student–mentor cycles" },
+  { href: "/admin/alumni-applications", label: "Alumni Applications", icon: UserCheck,   desc: "Review pending alumni requests" },
+  { href: "/admin/disputes",            label: "Disputes",            icon: AlertTriangle, desc: "Inactivity and cycle issues" },
+  { href: "/admin/support",             label: "Support Tickets",     icon: LifeBuoy,    desc: "Messages from students and mentors" },
 ];
 
 export default function AdminDashboard() {
+  const [stats, setStats] = React.useState<Stats | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/admin/stats")
+      .then((r) => r.json())
+      .then((d) => { if (d.error) setError(d.error); else setStats(d); })
+      .catch(() => setError("Could not load stats."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const KPI_CARDS = [
+    { key: "totalStudents" as const, label: "Students",          icon: GraduationCap },
+    { key: "totalMentors"  as const, label: "Active Mentors",    icon: Users         },
+    { key: "activeCycles"  as const, label: "Active Cycles",     icon: RefreshCw     },
+    { key: "pendingRequests" as const, label: "Pending Requests",icon: Clock         },
+    { key: "pendingAlumni" as const, label: "Alumni Pending",    icon: UserCheck     },
+  ];
+
   return (
     <div>
       <PageHeader title="Institutional Command Center" description="Live snapshot across every mentorship cycle and cohort." />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {/* KPI cards */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {KPI_CARDS.map((k) => {
-          const value = ADMIN_KPIS[k.key];
+          const value = stats?.[k.key];
+          const isPending = k.key === "pendingAlumni" && (value ?? 0) > 0;
           return (
-            <Card key={k.key}>
+            <Card key={k.key} className={isPending ? "border-accent/40" : ""}>
               <CardContent className="p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-[11px] uppercase tracking-wide text-muted">{k.label}</p>
-                  <k.icon className="h-3.5 w-3.5 text-muted" />
+                  <k.icon className={`h-3.5 w-3.5 ${isPending ? "text-accent" : "text-muted"}`} />
                 </div>
-                <p className="font-display text-xl font-medium number-tabular">
-                  {k.money ? formatCurrency(value) : value}
+                <p className="font-display text-xl font-medium">
+                  {loading ? <span className="text-muted text-sm">—</span> : error ? "—" : (value ?? 0)}
                 </p>
+                {isPending && (
+                  <Link href="/admin/alumni-applications" className="mt-1 block text-xs text-accent hover:underline">
+                    Review →
+                  </Link>
+                )}
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Platform Capacity Trend</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-2">
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={CAPACITY_TREND} margin={{ left: -20, right: 10, top: 10 }}>
-                <defs>
-                  <linearGradient id="students" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--role-admin))" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="hsl(var(--role-admin))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="mentors" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "hsl(var(--muted))" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted))" }} axisLine={false} tickLine={false} width={36} />
-                <Tooltip
-                  contentStyle={{ background: "hsl(var(--surface))", border: "1px solid hsl(var(--line))", borderRadius: 4, fontSize: 12 }}
-                />
-                <Area type="monotone" dataKey="students" stroke="hsl(var(--role-admin))" fill="url(#students)" strokeWidth={2} name="Students" />
-                <Area type="monotone" dataKey="mentors" stroke="hsl(var(--accent))" fill="url(#mentors)" strokeWidth={2} name="Mentors" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {error && <div className="mb-6 rounded-sm border border-danger/30 bg-danger/[0.08] px-4 py-3 text-sm text-danger">{error}</div>}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Active Cohorts by Domain</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-2">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={DOMAIN_DISTRIBUTION} layout="vertical" margin={{ left: 0, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted))" }} axisLine={false} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="domain"
-                  width={120}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted))" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{ background: "hsl(var(--surface))", border: "1px solid hsl(var(--line))", borderRadius: 4, fontSize: 12 }}
-                />
-                <Bar dataKey="cohorts" fill="hsl(var(--role-admin))" radius={[0, 3, 3, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Quick links */}
+      <h2 className="mb-3 font-display text-lg font-medium">Quick Actions</h2>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {QUICK_LINKS.map((l) => (
-          <Button key={l.href} variant="outline" asChild className="h-auto justify-start gap-3 py-4 transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-sm">
+          <Button key={l.href} variant="outline" asChild
+            className="h-auto flex-col items-start gap-1 py-4 px-4 transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-sm">
             <Link href={l.href}>
-              <l.icon className="h-4 w-4" />
-              <span className="flex-1 text-left">{l.label}</span>
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              <div className="flex w-full items-center justify-between">
+                <l.icon className="h-4 w-4" />
+                <ArrowRight className="h-3.5 w-3.5 text-muted" />
+              </div>
+              <p className="text-sm font-medium">{l.label}</p>
+              <p className="text-xs font-normal text-muted">{l.desc}</p>
             </Link>
           </Button>
         ))}
       </div>
+
+      {/* Live pairs preview */}
+      <PairsPreview />
+    </div>
+  );
+}
+
+function PairsPreview() {
+  const [pairs, setPairs] = React.useState<
+    { cycleId: string; studentName: string; mentorName: string; domain: string | null; currentWeek: number; totalWeeks: number }[]
+  >([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    fetch("/api/admin/pairs")
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d) && setPairs(d.slice(0, 8)))
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading || pairs.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-display text-lg font-medium">Recent Pairings</h2>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/admin/pairs">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
+        </Button>
+      </div>
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-muted">
+                <th className="px-4 py-3 font-medium">Student</th>
+                <th className="px-4 py-3 font-medium">Mentor</th>
+                <th className="px-4 py-3 font-medium">Domain</th>
+                <th className="px-4 py-3 font-medium">Progress</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {pairs.map((p) => (
+                <tr key={p.cycleId} className="hover:bg-ink/[0.02]">
+                  <td className="px-4 py-3 font-medium">{p.studentName}</td>
+                  <td className="px-4 py-3 text-muted">{p.mentorName}</td>
+                  <td className="px-4 py-3 text-muted">{p.domain ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-20 rounded-full bg-line overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-accent"
+                          style={{ width: `${Math.round((p.currentWeek / p.totalWeeks) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted">Wk {p.currentWeek}/{p.totalWeeks}</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

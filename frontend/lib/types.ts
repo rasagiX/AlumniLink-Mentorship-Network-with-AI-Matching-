@@ -4,8 +4,14 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  avatarSeed: string;
   role: Role;
+  bio?: string;
+  year?: number;
+  branch?: string;
+  avatar_color?: string;
+  skills?: string;
+  linkedin_url?: string;
+  campus_location?: string;
 }
 
 export interface MentorProfile {

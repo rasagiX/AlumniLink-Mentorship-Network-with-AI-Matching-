@@ -69,6 +69,10 @@ to the login form.
 ```
 JWT_SECRET="must-match-backend-SECRET_KEY-exactly"
 FASTAPI_BASE_URL="http://localhost:8000"
+# Optional. Address the BROWSER uses to reach FastAPI's WebSocket, when it
+# differs from FASTAPI_BASE_URL (Docker hostnames, reverse proxy, production).
+# Defaults to FASTAPI_BASE_URL with http→ws / https→wss.
+# FASTAPI_PUBLIC_WS_URL="wss://api.example.com"
 ```
 
 ## Stack
@@ -110,3 +114,18 @@ the full flow (matching → enrollment → milestones → grading → payout →
 exercised end to end without building out that entire domain first. Swap `lib/mock-data.ts` for
 real queries keyed off the session's user id when wiring that up next; the component layer already
 reads through the `lib/types.ts` contracts.
+
+
+## Live video classes (WebRTC)
+
+`/video-class/[cycleId]?week=N` is a real 1:1 call between a cycle's student and mentor.
+
+- `lib/use-video-room.ts` — camera/mic, the signaling WebSocket, the `RTCPeerConnection`,
+  mute / camera / screen-share, and automatic reconnect.
+- `app/api/video/ticket/route.ts` — the FastAPI token is in an httpOnly cookie that the browser
+  can't read, so this route fetches a short-lived signaling ticket server-side and hands it to the page.
+- `middleware.ts` — `/video-class/*` now requires a signed-in student or mentor.
+
+Browsers only allow camera/mic on `https://` or `http://localhost`, so production needs HTTPS (and `wss://`).
+To test locally, sign in as a student in one browser profile and as the cycle's mentor in another
+(or an incognito window), then open the class from each LMS page.
