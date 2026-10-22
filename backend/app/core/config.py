@@ -25,6 +25,23 @@ class Settings(BaseSettings):
     # Used only for download URLs when R2 is enabled.
     R2_PUBLIC_BASE_URL: str = ""
 
+    # ── WebRTC video classes ──────────────────────────────────────────────
+    # Seconds a signaling ticket stays valid. The browser fetches one right
+    # before opening the WebSocket, so this only needs to cover that gap.
+    VIDEO_TICKET_TTL_SECONDS: int = 60
+    # STUN is enough for local testing. Production NEEDS a TURN server too —
+    # without it, users behind strict NATs / campus firewalls cannot connect.
+    # List-valued vars are JSON in .env, e.g. TURN_URLS=["turn:turn.example.com:3478"]
+    STUN_URLS: list[str] = ["stun:stun.l.google.com:19302"]
+    TURN_URLS: list[str] = []
+    # Option A: one static username/password pair.
+    TURN_USERNAME: str = ""
+    TURN_CREDENTIAL: str = ""
+    # Option B (preferred for coturn `use-auth-secret`): short-lived credentials
+    # derived per user from a shared secret. Takes priority over option A.
+    TURN_SHARED_SECRET: str = ""
+    TURN_CREDENTIAL_TTL_SECONDS: int = 6 * 60 * 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property

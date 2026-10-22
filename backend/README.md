@@ -208,3 +208,31 @@ a piece here means: a new model under `app/models/`, a schema under `app/schemas
 module under `app/api/v1/endpoints/`, one line to mount it in `app/api/v1/api.py` — then pointing
 the frontend at this API instead of its mock data. As real tables accumulate, this is also the
 point to introduce Alembic for migrations instead of relying on `Base.metadata.create_all()`.
+
+
+## Live video classes (WebRTC signaling)
+
+`app/api/v1/endpoints/video.py` adds the signaling side of the 1:1 video classes:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/video/ticket` `{cycle_id}` | Bearer-authenticated. Verifies the caller is the cycle's student or mentor, returns a 60-second signaling ticket and the ICE server list. |
+| `WS /api/v1/video/ws/{cycle_id}?ticket=…` | Relays `offer` / `answer` / `candidate` / `media-state` between the two participants. Audio and video never pass through the server. |
+
+Tickets carry no `sub` claim, so they can't be replayed as normal access tokens. Close codes:
+`4001` bad/expired ticket, `4003` room full, `4009` same user joined from another tab.
+
+Optional `.env` settings (list values are JSON):
+
+```
+STUN_URLS=["stun:stun.l.google.com:19302"]       # default
+TURN_URLS=["turn:turn.example.com:3478","turns:turn.example.com:5349"]
+TURN_SHARED_SECRET=...      # coturn use-auth-secret → short-lived per-user credentials (preferred)
+# or a static pair:
+TURN_USERNAME=...
+TURN_CREDENTIAL=...
+```
+
+**Production needs a TURN server.** STUN alone fails for users behind symmetric NATs or strict
+campus/corporate firewalls. Room state is held in process memory, so run a single worker, or move
+`app/core/video_rooms.py` to Redis pub/sub before scaling out.

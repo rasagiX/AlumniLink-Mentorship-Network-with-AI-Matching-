@@ -34,3 +34,43 @@ def decode_access_token(token: str) -> dict:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError as exc:
         raise ValueError("Could not validate credentials.") from exc
+
+
+# ---------------------------------------------------------------------------
+# Video-class signaling tickets
+# ---------------------------------------------------------------------------
+# Browsers can't attach an Authorization header to a WebSocket, and the real
+# access token lives in an httpOnly cookie that page JavaScript can't read. So
+# the Next.js server asks FastAPI for a short-lived, single-purpose "ticket"
+# and the browser presents that in the WebSocket URL instead.
+#
+# Tickets deliberately have NO "sub" claim, so they can never be replayed as a
+# normal bearer token (get_current_user rejects tokens without "sub").
+
+VIDEO_TICKET_TYPE = "video-ticket"
+
+
+def create_video_ticket(*, user_id: str, name: str, class_role: str, cycle_id: str) -> str:
+    return create_access_token(
+        {
+            "typ": VIDEO_TICKET_TYPE,
+            "uid": user_id,
+            "name": name,
+            "class_role": class_role,  # "student" | "mentor" — role within this class
+            "cycle_id": cycle_id,
+        },
+        expires_delta=timedelta(seconds=settings.VIDEO_TICKET_TTL_SECONDS),
+    )
+
+
+def decode_video_ticket(ticket: str, cycle_id: str) -> dict:
+    """Raises ValueError unless the ticket is valid, unexpired, a video ticket,
+    and issued for this exact cycle."""
+    payload = decode_access_token(ticket)
+    if (
+        payload.get("typ") != VIDEO_TICKET_TYPE
+        or payload.get("cycle_id") != cycle_id
+        or not payload.get("uid")
+    ):
+        raise ValueError("Invalid video ticket.")
+    return payload
