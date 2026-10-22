@@ -15,15 +15,30 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
 
     # ── Cloudflare R2 ─────────────────────────────────────────────────────
-    # Set these in .env to enable R2. If blank, the app falls back to
-    # local disk storage (UPLOAD_DIR) so development works without credentials.
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""
     R2_SECRET_ACCESS_KEY: str = ""
     R2_BUCKET_NAME: str = ""
-    # Public-access custom domain, e.g. https://files.yourschool.edu
-    # Used only for download URLs when R2 is enabled.
     R2_PUBLIC_BASE_URL: str = ""
+
+    # ── WebRTC video classes ───────────────────────────────────────────────
+    # Seconds a signaling ticket stays valid. Browser fetches one right
+    # before opening the WebSocket, so this only needs to cover that gap.
+    VIDEO_TICKET_TTL_SECONDS: int = 60
+    # STUN is enough for local testing. Production NEEDS a TURN server too —
+    # without it, users behind strict NATs / campus firewalls cannot connect.
+    # List-valued settings are JSON in .env:
+    #   STUN_URLS=["stun:stun.l.google.com:19302"]
+    #   TURN_URLS=["turn:turn.example.com:3478"]
+    STUN_URLS: list[str] = ["stun:stun.l.google.com:19302"]
+    TURN_URLS: list[str] = []
+    # Option A: static username + credential
+    TURN_USERNAME: str = ""
+    TURN_CREDENTIAL: str = ""
+    # Option B (preferred — coturn `use-auth-secret`): HMAC-SHA1 short-lived
+    # credentials derived per user. Takes priority over option A.
+    TURN_SHARED_SECRET: str = ""
+    TURN_CREDENTIAL_TTL_SECONDS: int = 6 * 60 * 60   # 6 hours
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
