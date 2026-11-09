@@ -1,28 +1,42 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-type Tone = "neutral" | "accent" | "success" | "warning" | "danger" | "student" | "mentor" | "admin";
+type Tone =
+  | "default"
+  | "student"
+  | "mentor"
+  | "admin"
+  | "success"
+  | "danger"
+  | "warning"
+  | "accent";
 
 const toneClasses: Record<Tone, string> = {
-  neutral: "bg-ink/[0.06] text-ink border-line",
-  accent: "bg-accent/[0.12] text-accent-ink border-accent/30",
-  success: "bg-success/[0.10] text-success border-success/30",
-  warning: "bg-warning/[0.12] text-warning border-warning/30",
-  danger: "bg-danger/[0.10] text-danger border-danger/30",
-  student: "bg-role-student/[0.10] text-role-student border-role-student/30",
-  mentor: "bg-role-mentor/[0.10] text-role-mentor border-role-mentor/30",
-  admin: "bg-role-admin/[0.10] text-role-admin border-role-admin/30",
+  default: "bg-surface2 text-ink/80 border-line/60",
+  student: "bg-[hsl(213_94%_62%/0.12)] text-[hsl(213_94%_75%)] border-[hsl(213_94%_62%/0.25)]",
+  mentor:  "bg-[hsl(175_55%_48%/0.12)] text-[hsl(175_55%_65%)] border-[hsl(175_55%_48%/0.25)]",
+  admin:   "bg-[hsl(250_55%_68%/0.12)] text-[hsl(250_55%_78%)] border-[hsl(250_55%_68%/0.25)]",
+  success: "bg-[hsl(152_48%_50%/0.12)] text-[hsl(152_48%_65%)] border-[hsl(152_48%_50%/0.25)]",
+  danger:  "bg-[hsl(4_80%_60%/0.12)]  text-[hsl(4_80%_72%)]   border-[hsl(4_80%_60%/0.25)]",
+  warning: "bg-[hsl(40_92%_58%/0.12)] text-[hsl(40_92%_70%)]  border-[hsl(40_92%_58%/0.25)]",
+  accent:  "bg-[hsl(213_94%_62%/0.12)] text-[hsl(213_94%_75%)] border-[hsl(213_94%_62%/0.25)]",
 };
 
-export function Badge({ tone = "neutral", className, ...props }: React.HTMLAttributes<HTMLSpanElement> & { tone?: Tone }) {
+export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  tone?: Tone;
+}
+
+export function Badge({ tone = "default", className, children, ...props }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
         toneClasses[tone],
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </span>
   );
 }

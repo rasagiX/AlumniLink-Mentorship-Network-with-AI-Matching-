@@ -2,54 +2,126 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   DESIGN TOKENS
+   Dark institutional theme — one accent, three role tints, full HSL system.
+───────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Dark institutional theme: near-black ground, soft off-white text, a
-     single electric-blue accent carrying all primary actions, links, focus
-     states, and match-score emphasis. Each portal gets a quiet variant of
-     that same blue family so the identity stays cohesive rather than
-     competing with the accent. */
-  --ink: 210 24% 94%;
-  --paper: 222 26% 6%;
-  --surface: 222 22% 9%;
-  --line: 220 16% 18%;
-  --muted: 218 12% 62%;
-  --accent: 213 94% 62%;
-  --accent-ink: 213 100% 85%;
-  --success: 152 45% 48%;
-  --warning: 40 90% 58%;
-  --danger: 4 78% 60%;
-  --role-student: 213 94% 62%;
-  --role-mentor: 175 55% 48%;
-  --role-admin: 250 55% 68%;
+  /* Neutrals */
+  --ink:     210 20% 95%;      /* near-white text        */
+  --paper:   222 28%  7%;      /* deepest background     */
+  --surface: 222 24% 11%;      /* card / sidebar ground  */
+  --surface2:220 20% 14%;      /* elevated card          */
+  --line:    220 18% 20%;      /* borders                */
+  --muted:   218 14% 55%;      /* secondary text         */
 
+  /* Accent — electric blue, single source of truth */
+  --accent:       213 94% 62%;
+  --accent-dim:   213 80% 50%;
+  --accent-glow:  213 94% 62%;
+  --accent-ink:   213 100% 88%;
+
+  /* Semantic */
+  --success:  152 48% 50%;
+  --warning:   40 92% 58%;
+  --danger:     4 80% 60%;
+
+  /* Role tints */
+  --role-student: 213 94% 62%;   /* blue  */
+  --role-mentor:  175 55% 48%;   /* teal  */
+  --role-admin:   250 55% 68%;   /* violet */
+
+  /* Typography */
   --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Spacing rhythm */
+  --radius: 6px;
 }
 
-* {
+/* ─────────────────────────────────────────────────────────────────────────────
+   BASE RESET & GLOBAL STYLES
+───────────────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
   border-color: hsl(var(--line));
 }
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background-color: hsl(var(--paper));
   color: hsl(var(--ink));
-  font-feature-settings: "cv11", "ss01";
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "cv02";
+  line-height: 1.6;
+  min-height: 100dvh;
 }
 
+/* ─── Selection ─── */
 ::selection {
-  background: hsl(var(--accent) / 0.25);
+  background: hsl(var(--accent) / 0.22);
+  color: hsl(var(--ink));
 }
 
+/* ─── Focus ring — accent only, no ugly defaults ─── */
 :focus-visible {
   outline: 2px solid hsl(var(--accent));
   outline-offset: 2px;
+  border-radius: var(--radius);
 }
 
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--line));
+  border-radius: 99px;
+  border: 2px solid hsl(var(--paper));
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted) / 0.6); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   UTILITY CLASSES
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Gradient text (logo, headings) */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(var(--accent-ink)), hsl(var(--accent)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass card effect */
+.glass {
+  background: hsl(var(--surface) / 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--line) / 0.6);
+}
+
+/* Subtle mesh background for hero/auth panels */
+.mesh-bg {
+  background-color: hsl(var(--paper));
+  background-image:
+    radial-gradient(at 20% 30%, hsl(var(--accent) / 0.08) 0px, transparent 55%),
+    radial-gradient(at 80% 70%, hsl(var(--role-mentor) / 0.07) 0px, transparent 55%),
+    radial-gradient(at 50% 50%, hsl(var(--role-admin) / 0.04) 0px, transparent 60%);
+}
+
+/* Tabular numbers */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Horizontal rule */
+.rule { border-top: 1px solid hsl(var(--line)); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   REDUCED MOTION
+───────────────────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -58,16 +130,3 @@ body {
     scroll-behavior: auto !important;
   }
 }
-
-.rule {
-  border-top: 1px solid hsl(var(--line));
-}
-
-.number-tabular {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Scrollbar kept quiet to match the registrar tone */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--line)); border-radius: 6px; }
