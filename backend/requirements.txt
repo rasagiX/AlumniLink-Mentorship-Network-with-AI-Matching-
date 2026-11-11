@@ -16,3 +16,7 @@ python-dotenv>=1.0.1
 boto3>=1.34.0
 # HTTP client — used by Supabase Storage backend
 requests>=2.32.0
+# AI mentor matching engine
+sentence-transformers>=3.0.0   # local embeddings (all-MiniLM-L6-v2), no API key needed
+pgvector>=0.3.0                # SQLAlchemy vector column type + cosine search
+groq>=0.9.0                    # LLM re-ranking via Groq free tier (llama-3.3-70b)

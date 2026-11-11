@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
-    admin, auth, lms, mentors, mentorship_requests,
+    admin, ai_match, auth, lms, mentors, mentorship_requests,
     peer_sessions, profile, sessions, video,
 )
 
@@ -15,3 +15,4 @@ api_router.include_router(sessions.router)
 api_router.include_router(profile.router)
 api_router.include_router(peer_sessions.router)
 api_router.include_router(video.router)
+api_router.include_router(ai_match.router)

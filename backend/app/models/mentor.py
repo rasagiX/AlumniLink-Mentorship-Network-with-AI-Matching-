@@ -1,5 +1,6 @@
 import uuid
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.sql import func
 
@@ -33,5 +34,8 @@ class Mentor(Base):
     # registration with this email as role="mentor".
     is_registered = Column(Boolean, nullable=False, default=False)
     user_id = Column(String, nullable=True)
+
+    # 384-dim sentence-transformer embedding for AI matching
+    embedding = Column(Vector(384), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

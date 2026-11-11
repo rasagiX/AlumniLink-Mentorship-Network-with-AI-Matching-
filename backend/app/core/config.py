@@ -68,5 +68,15 @@ class Settings(BaseSettings):
     def supabase_storage_enabled(self) -> bool:
         return bool(self.SUPABASE_URL and self.SUPABASE_SERVICE_KEY and self.SUPABASE_BUCKET)
 
+    # ── AI Mentor Matching ─────────────────────────────────────────────────
+    # Groq free tier — get key at https://console.groq.com (no billing needed)
+    GROQ_API_KEY: str = ""
+    # LLM model for re-ranking (free on Groq)
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    # Candidates fetched via vector search before LLM re-ranks them
+    AI_MATCH_CANDIDATES: int = 10
+    # Final recommendations returned to the student
+    AI_MATCH_TOP_K: int = 5
+
 
 settings = Settings()
