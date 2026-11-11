@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = ""
     R2_PUBLIC_BASE_URL: str = ""
 
+    # ── Supabase Storage (free, no billing required) ───────────────────────
+    # Get these from: Supabase dashboard → Project Settings → API
+    #   SUPABASE_URL  = https://<project-ref>.supabase.co
+    #   SUPABASE_SERVICE_KEY = your service_role secret key
+    # Create a bucket named "alumnilink" in Supabase → Storage first.
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
+    SUPABASE_BUCKET: str = "alumnilink"
+
     # ── WebRTC video classes ───────────────────────────────────────────────
     # Seconds a signaling ticket stays valid. Browser fetches one right
     # before opening the WebSocket, so this only needs to cover that gap.
@@ -54,6 +63,10 @@ class Settings(BaseSettings):
     @property
     def r2_endpoint_url(self) -> str:
         return f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+    @property
+    def supabase_storage_enabled(self) -> bool:
+        return bool(self.SUPABASE_URL and self.SUPABASE_SERVICE_KEY and self.SUPABASE_BUCKET)
 
 
 settings = Settings()
