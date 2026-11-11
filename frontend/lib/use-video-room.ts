@@ -40,7 +40,9 @@ export interface PeerMedia {
 
 interface TicketResponse {
   ticket: string;
+  chatTicket: string;
   wsUrl: string;
+  chatWsUrl: string;
   iceServers: RTCIceServer[];
   me: RoomPerson;
   peer: { name: string | null; role: string | null };
@@ -105,6 +107,21 @@ export function useVideoRoom(cycleId: string) {
   const [sharing, setSharing] = React.useState(false);
   const [canShare, setCanShare] = React.useState(false);
   const [attempt, setAttempt] = React.useState(0);
+
+  // ── Chat WS URL (set once ticket is fetched) ──────────────────────────────
+  const [chatWsUrl, setChatWsUrl] = React.useState<string | null>(null);
+
+  // ── Recording state ───────────────────────────────────────────────────────
+  const [recording, setRecording] = React.useState(false);
+  const [recordingReady, setRecordingReady] = React.useState(false);
+  const [recordingBlob, setRecordingBlob] = React.useState<Blob | null>(null);
+  const [recordingDuration, setRecordingDuration] = React.useState(0);
+  const [uploadingRecording, setUploadingRecording] = React.useState(false);
+  const [recordingError, setRecordingError] = React.useState<string | null>(null);
+
+  const mediaRecorderRef  = React.useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = React.useRef<Blob[]>([]);
+  const recordingStartRef = React.useRef<number>(0);
 
   const wsRef = React.useRef<WebSocket | null>(null);
   const pcRef = React.useRef<RTCPeerConnection | null>(null);
@@ -333,6 +350,7 @@ export function useVideoRoom(cycleId: string) {
       iceServersRef.current = t.iceServers;
       setMe(t.me);
       setPeer((prev) => prev ?? t.peer);
+      setChatWsUrl(t.chatWsUrl);
       setStatus("connecting");
       const ws = new WebSocket(`${t.wsUrl}?ticket=${encodeURIComponent(t.ticket)}`);
       wsRef.current = ws;
@@ -473,11 +491,99 @@ export function useVideoRoom(cycleId: string) {
     setAttempt((a) => a + 1);
   }, []);
 
+  // ── Recording controls ────────────────────────────────────────────────────
+
+  const startRecording = React.useCallback(() => {
+    if (recording) return;
+    const local = localRef.current;
+    if (!local) { setRecordingError("No local stream to record."); return; }
+
+    // Prefer video/webm;codecs=vp9 → vp8 → plain webm → mp4
+    const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"]
+      .find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+
+    let mr: MediaRecorder;
+    try {
+      mr = new MediaRecorder(local, mimeType ? { mimeType } : undefined);
+    } catch {
+      setRecordingError("MediaRecorder is not supported in this browser.");
+      return;
+    }
+
+    recordedChunksRef.current = [];
+    recordingStartRef.current = Date.now();
+
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
+
+    mr.onstop = () => {
+      const durationSec = Math.round((Date.now() - recordingStartRef.current) / 1_000);
+      const blob = new Blob(recordedChunksRef.current, { type: mr.mimeType || "video/webm" });
+      setRecordingBlob(blob);
+      setRecordingDuration(durationSec);
+      setRecordingReady(true);
+      setRecording(false);
+    };
+
+    mr.start(1_000); // collect a chunk every second
+    mediaRecorderRef.current = mr;
+    setRecording(true);
+    setRecordingReady(false);
+    setRecordingBlob(null);
+    setRecordingError(null);
+  }, [recording]);
+
+  const stopRecording = React.useCallback(() => {
+    if (!recording) return;
+    mediaRecorderRef.current?.stop();
+    // onstop will fire asynchronously and flip the state
+  }, [recording]);
+
+  const uploadRecording = React.useCallback(async () => {
+    if (!recordingBlob) return;
+    setUploadingRecording(true);
+    setRecordingError(null);
+    try {
+      const ext  = recordingBlob.type.includes("mp4") ? "mp4" : "webm";
+      const name = `recording-${new Date().toISOString().slice(0, 19).replace(/[:]/g, "-")}.${ext}`;
+      const form = new FormData();
+      form.append("file", recordingBlob, name);
+      form.append("duration_seconds", String(recordingDuration));
+
+      const res  = await fetch(`/api/video/recordings/${cycleId}`, { method: "POST", body: form });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setRecordingError(data?.error ?? "Upload failed.");
+      } else {
+        setRecordingBlob(null);
+        setRecordingReady(false);
+      }
+    } catch {
+      setRecordingError("Couldn't reach the server.");
+    } finally {
+      setUploadingRecording(false);
+    }
+  }, [cycleId, recordingBlob, recordingDuration]);
+
+  const discardRecording = React.useCallback(() => {
+    setRecordingBlob(null);
+    setRecordingReady(false);
+    setRecordingError(null);
+    recordedChunksRef.current = [];
+  }, []);
+
   return {
     status, error, notice, me, peer, peerPresent, peerMedia,
     localStream, remoteStream,
     micOn, camOn, sharing, canShare,
     hasCamera: (localStream?.getVideoTracks().length ?? 0) > 0,
     toggleMic, toggleCam, toggleShare, leave, rejoin,
+    // Chat
+    chatWsUrl,
+    // Recording
+    recording, recordingReady, recordingBlob, recordingDuration,
+    uploadingRecording, recordingError,
+    startRecording, stopRecording, uploadRecording, discardRecording,
   };
 }

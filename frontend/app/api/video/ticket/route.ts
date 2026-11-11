@@ -7,16 +7,7 @@ import { FASTAPI_V1 } from "@/lib/server/fastapi-client";
 /**
  * POST /api/video/ticket  { cycleId }
  *
- * The FastAPI bearer token lives in an httpOnly cookie, so browser JS can't
- * read it to authenticate a WebSocket. This route reads the cookie
- * server-side, asks FastAPI for a short-lived signaling ticket (FastAPI also
- * verifies the caller really belongs to this class), and returns it together
- * with the WebSocket URL and ICE servers.
- *
- * Set FASTAPI_PUBLIC_WS_URL (e.g. "wss://api.example.com") when the backend
- * is reached through a different address from the browser than from this
- * server (Docker network names, reverse proxies). If unset, it's derived from
- * FASTAPI_BASE_URL (http→ws, https→wss).
+ * Returns signaling ticket, chat ticket, WebSocket URLs, ICE servers.
  */
 export async function POST(req: Request) {
   const token = cookies().get(BACKEND_TOKEN_COOKIE_NAME)?.value;
@@ -36,22 +27,23 @@ export async function POST(req: Request) {
     const data = await upstream.json().catch(() => null);
     if (!upstream.ok) {
       return NextResponse.json(
-        { error: extractFastAPIError(data, "Couldn't join the class.") },
+        { error: extractFastAPIError(data) },
         { status: upstream.status }
       );
     }
 
-    // Build the public WebSocket URL the browser will connect to directly.
     const wsBase = (
       process.env.FASTAPI_PUBLIC_WS_URL ||
       (process.env.FASTAPI_BASE_URL || "http://localhost:8000").replace(/^http/, "ws")
     ).replace(/\/$/, "");
 
     return NextResponse.json({
-      ticket:     data.ticket,
-      wsUrl:      `${wsBase}${data.ws_path}`,
-      iceServers: data.ice_servers,
-      me:         data.me,
+      ticket:      data.ticket,
+      chatTicket:  data.chat_ticket,
+      wsUrl:       `${wsBase}${data.ws_path}`,
+      chatWsUrl:   `${wsBase}${data.chat_ws_path}`,
+      iceServers:  data.ice_servers,
+      me:          data.me,
       peer: { name: data.peer_name ?? null, role: data.peer_role ?? null },
     });
   } catch {

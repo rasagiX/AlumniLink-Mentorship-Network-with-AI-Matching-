@@ -70,3 +70,36 @@ def decode_video_ticket(ticket: str, cycle_id: str) -> dict:
     ):
         raise ValueError("Invalid video ticket.")
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Chat tickets  (same mechanism — browsers cannot send Authorization on WS)
+# ---------------------------------------------------------------------------
+
+CHAT_TICKET_TYPE = "chat-ticket"
+
+
+def create_chat_ticket(*, user_id: str, name: str, class_role: str, cycle_id: str) -> str:
+    return create_access_token(
+        {
+            "typ": CHAT_TICKET_TYPE,
+            "uid": user_id,
+            "name": name,
+            "class_role": class_role,
+            "cycle_id": cycle_id,
+        },
+        expires_delta=timedelta(seconds=settings.VIDEO_TICKET_TTL_SECONDS),
+    )
+
+
+def decode_chat_ticket(ticket: str, cycle_id: str) -> dict:
+    """Raises ValueError unless ticket is valid, unexpired, a chat ticket,
+    and issued for this exact cycle."""
+    payload = decode_access_token(ticket)
+    if (
+        payload.get("typ") != CHAT_TICKET_TYPE
+        or payload.get("cycle_id") != cycle_id
+        or not payload.get("uid")
+    ):
+        raise ValueError("Invalid chat ticket.")
+    return payload

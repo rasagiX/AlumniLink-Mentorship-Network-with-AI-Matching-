@@ -130,6 +130,43 @@ class ModuleFile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ChatMessage(Base):
+    """
+    A chat message sent during a live video class.
+    Persisted so the full transcript is available after the session ends.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    cycle_id = Column(String, ForeignKey("mentorship_cycles.id"), nullable=False, index=True)
+    sender_id = Column(String, nullable=False)
+    sender_name = Column(String, nullable=False)
+    sender_role = Column(String, nullable=False)   # "student" | "mentor"
+    text = Column(Text, nullable=False)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionRecording(Base):
+    """
+    A recording uploaded by a participant after a video class.
+    Points to a file in R2 / local storage.
+    """
+
+    __tablename__ = "session_recordings"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    cycle_id = Column(String, ForeignKey("mentorship_cycles.id"), nullable=False, index=True)
+    uploader_id = Column(String, nullable=False)
+    uploader_name = Column(String, nullable=False)
+    storage_key = Column(String, nullable=False, unique=True)
+    original_name = Column(String, nullable=False)
+    content_type = Column(String, nullable=False, default="video/webm")
+    size_bytes = Column(Integer, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class AlumniApplication(Base):
     """
     Pending alumni registration request — submitted by the alumni themselves.
