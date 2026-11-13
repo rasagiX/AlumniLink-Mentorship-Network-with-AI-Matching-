@@ -147,7 +147,7 @@ def accept_request(
         domain=mentor.domain,
         total_weeks=payload.total_weeks,
         current_week=1,
-        available_days=",".join(payload.available_days),
+        available_days=",".join(payload.available_days) if payload.available_days else None,
         class_start_date=start_date,
         class_time=payload.class_time,
     )

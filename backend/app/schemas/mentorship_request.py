@@ -41,7 +41,7 @@ class MentorRequestInboundOut(BaseModel):
 
 class AcceptSchedulePayload(BaseModel):
     """Mentor fills this in when accepting a request."""
-    available_days: List[str] = Field(min_length=1, description="Days mentor is available, e.g. ['Mon','Wed','Fri']")
+    available_days: Optional[List[str]] = Field(default=None, description="Days mentor is available, e.g. ['Mon','Wed','Fri']")
     total_weeks: int = Field(ge=1, le=52, default=12)
     class_start_date: str = Field(description="ISO date string YYYY-MM-DD")
     class_time: str = Field(description="Time of class e.g. '10:00 AM'", min_length=1)

@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Check, X, Inbox, Loader2, AlertCircle, Clock,
-  CalendarDays, Timer, Users, ChevronDown, ChevronUp,
+  CalendarDays, Timer, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,13 +36,10 @@ interface InboundRequest {
 // ---------------------------------------------------------------------------
 // Accept schedule schema
 // ---------------------------------------------------------------------------
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-
 const acceptSchema = z.object({
   total_weeks: z.coerce.number().min(1, "Min 1 week").max(52, "Max 52 weeks"),
   class_start_date: z.string().min(1, "Pick a start date"),
   class_time: z.string().min(1, "Pick a class time"),
-  available_days: z.array(z.string()).min(1, "Select at least one day"),
 });
 type AcceptValues = z.infer<typeof acceptSchema>;
 
@@ -63,8 +60,6 @@ function AcceptModal({
   const {
     register,
     handleSubmit,
-    watch,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<AcceptValues>({
     resolver: zodResolver(acceptSchema),
@@ -72,20 +67,8 @@ function AcceptModal({
       total_weeks: request.desired_weeks ?? 12,
       class_start_date: "",
       class_time: "",
-      available_days: [],
     },
   });
-
-  const selectedDays = watch("available_days") ?? [];
-
-  const toggleDay = (day: string) => {
-    const current = selectedDays;
-    if (current.includes(day)) {
-      setValue("available_days", current.filter((d) => d !== day), { shouldValidate: true });
-    } else {
-      setValue("available_days", [...current, day], { shouldValidate: true });
-    }
-  };
 
   const onSubmit = async (values: AcceptValues) => {
     setServerError(null);
@@ -215,36 +198,6 @@ function AcceptModal({
             <p className="mt-1 text-xs text-muted">
               The recurring time slot each class will take place.
             </p>
-          </div>
-
-          {/* Available days */}
-          <div>
-            <Label className="flex items-center gap-1.5 mb-2">
-              <Users className="h-3.5 w-3.5 text-muted" /> Your available days
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              {DAYS.map((day) => {
-                const active = selectedDays.includes(day);
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(day)}
-                    className={cn(
-                      "rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors",
-                      active
-                        ? "border-ink bg-ink text-paper"
-                        : "border-line text-muted hover:border-ink hover:text-ink"
-                    )}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-            {errors.available_days && (
-              <p className="mt-1 text-xs text-danger">{errors.available_days.message}</p>
-            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
