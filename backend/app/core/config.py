@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     AI_MATCH_CANDIDATES: int = 10
     # Final recommendations returned to the student
     AI_MATCH_TOP_K: int = 5
+    # HuggingFace token — if set, uses HF Inference API for embeddings
+    # (avoids loading 90MB model in RAM on small servers like Render free tier)
+    # Get free token at https://huggingface.co/settings/tokens
+    HF_TOKEN: str = ""
 
 
 settings = Settings()
