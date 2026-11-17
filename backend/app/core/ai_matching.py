@@ -82,7 +82,7 @@ class MatchRecommendation:
 def embed_text(text_input: str) -> list[float]:
     """
     Convert text to a 384-dim float list.
-    Tries HF Inference API first, then local model, then raises.
+    Returns empty list if no embedding method is available — caller handles fallback.
     """
     hf_token = getattr(settings, "HF_TOKEN", "") or ""
 
@@ -106,13 +106,17 @@ def embed_text(text_input: str) -> list[float]:
                 norm = math.sqrt(sum(v * v for v in vec)) or 1.0
                 return [v / norm for v in vec]
         except Exception as exc:
-            logger.warning("HF API unavailable (%s) — skipping embedding", exc)
-            raise  # re-raise so run_matching catches it and skips vector search
+            logger.warning("HF API unavailable (%s) — will skip vector search", exc)
+            return []  # caller falls back to full mentor fetch
 
     # Local model fallback
-    model = _get_embedder()
-    vec = model.encode(text_input, normalize_embeddings=True)
-    return vec.tolist()
+    try:
+        model = _get_embedder()
+        vec = model.encode(text_input, normalize_embeddings=True)
+        return vec.tolist()
+    except Exception as exc:
+        logger.warning("Local model unavailable (%s) — will skip vector search", exc)
+        return []
 
 
 def build_mentor_text(mentor: Mentor, user: Optional[User]) -> str:
