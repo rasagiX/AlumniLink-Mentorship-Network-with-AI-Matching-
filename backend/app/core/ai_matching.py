@@ -157,12 +157,31 @@ def vector_search(
 ) -> list[MentorCandidate]:
     """
     Retrieve top-N mentors by cosine similarity from pgvector HNSW index.
-    Falls back to returning all registered mentors if none have embeddings yet.
+    Falls back to returning all registered mentors if none have embeddings yet
+    or if the query vector is empty.
     """
+    # If no query vector available, skip vector search entirely
+    if not query_vector:
+        rows_fb = db.execute(text("""
+            SELECT m.id, m.name, m.title, m.company, m.domain, m.capacity,
+                   u.bio, u.skills
+            FROM mentors m
+            LEFT JOIN users u ON u.id = m.user_id
+            WHERE m.is_registered = TRUE
+            LIMIT :lim
+        """), {"lim": limit}).fetchall()
+        return [
+            MentorCandidate(
+                mentor_id=r[0], name=r[1], title=r[2], company=r[3],
+                domain=r[4], capacity=r[5], bio=r[6], skills=r[7],
+                similarity=0.5,
+            )
+            for r in rows_fb
+        ]
+
     from pgvector.sqlalchemy import Vector
     from sqlalchemy import cast
 
-    # Build the query using SQLAlchemy ORM to avoid raw cast syntax issues
     rows = db.execute(text("""
         SELECT
             m.id,
@@ -354,17 +373,22 @@ def run_matching(
 ) -> list[MatchRecommendation]:
     """
     Full pipeline: embed → vector search → LLM re-rank → MatchRecommendation list.
+    If embedding fails (e.g. no model available on server), falls back to
+    fetching all mentors and sending them directly to the LLM for ranking.
     """
-    # 1. Embed the student query
-    query_text   = build_student_query(target_role, semester, skills_and_interests, bio)
-    query_vector = embed_text(query_text)
+    # 1. Try to embed the student query (may fail on low-resource servers)
+    query_vector: list[float] = []
+    try:
+        query_text   = build_student_query(target_role, semester, skills_and_interests, bio)
+        query_vector = embed_text(query_text)
+    except Exception as exc:
+        logger.warning("Embedding failed (%s) — skipping vector search, using all mentors", exc)
 
-    # 2. Vector search for top candidates
+    # 2. Vector search (or fetch all if no vector available)
     candidates = vector_search(db, query_vector, limit=settings.AI_MATCH_CANDIDATES)
     if not candidates:
         return []
 
-    # Build a quick lookup by mentor_id for the response assembly step
     candidate_map = {c.mentor_id: c for c in candidates}
 
     # 3. LLM re-ranking (or fallback)
@@ -380,7 +404,7 @@ def run_matching(
     if llm_results is None:
         llm_results = _fallback_recommendations(candidates, settings.AI_MATCH_TOP_K)
 
-    # 4. Assemble final recommendations, merging LLM output with DB data
+    # 4. Assemble final recommendations
     recommendations: list[MatchRecommendation] = []
     for rec in llm_results[: settings.AI_MATCH_TOP_K]:
         mid = rec.get("mentor_id", "")
