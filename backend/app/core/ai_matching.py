@@ -81,35 +81,33 @@ class MatchRecommendation:
 
 def embed_text(text_input: str) -> list[float]:
     """
-    Convert text to a 384-dim float list using all-MiniLM-L6-v2.
-    Uses HF Inference API if HF_TOKEN is set (avoids loading model in memory).
-    Falls back to local sentence-transformers otherwise.
+    Convert text to a 384-dim float list.
+    Tries HF Inference API first, then local model, then raises.
     """
     hf_token = getattr(settings, "HF_TOKEN", "") or ""
 
     if hf_token:
-        # Use HF Inference API — no model loaded in memory, no RAM issue
-        import requests as req
-        api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
-        resp = req.post(
-            api_url,
-            headers={"Authorization": f"Bearer {hf_token}"},
-            json={"inputs": text_input, "options": {"wait_for_model": True}},
-            timeout=30,
-        )
-        if resp.ok:
-            data = resp.json()
-            # HF returns nested list for single input — flatten
-            if isinstance(data, list) and isinstance(data[0], list):
-                vec = data[0]
-            else:
-                vec = data
-            # Normalize
-            import math
-            norm = math.sqrt(sum(v * v for v in vec)) or 1.0
-            return [v / norm for v in vec]
-        else:
-            logger.warning("HF Inference API failed (%s), falling back to local model", resp.status_code)
+        try:
+            import requests as req
+            api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+            resp = req.post(
+                api_url,
+                headers={"Authorization": f"Bearer {hf_token}"},
+                json={"inputs": text_input, "options": {"wait_for_model": True}},
+                timeout=10,
+            )
+            if resp.ok:
+                data = resp.json()
+                if isinstance(data, list) and isinstance(data[0], list):
+                    vec = data[0]
+                else:
+                    vec = data
+                import math
+                norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+                return [v / norm for v in vec]
+        except Exception as exc:
+            logger.warning("HF API unavailable (%s) — skipping embedding", exc)
+            raise  # re-raise so run_matching catches it and skips vector search
 
     # Local model fallback
     model = _get_embedder()
